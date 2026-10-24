@@ -102,12 +102,23 @@ def bootstrap_users(db: Session) -> None:
             config.COMPLIANCE_ADMIN_PASSWORD,
         ),
     )
+    if config.RESET_BOOTSTRAP_PASSWORDS and (
+        config.DEMO_MODE
+        or any(not configured_password for _, _, _, configured_password in seeds)
+    ):
+        raise RuntimeError(
+            "All five individual role passwords must be configured when "
+            "RESET_BOOTSTRAP_PASSWORDS is enabled outside demo mode."
+        )
+
     demo_passwords = demo_role_passwords()
     for username, display_name, role, configured_password in seeds:
         existing = db.scalar(select(User).where(User.username == username))
         if existing:
             if username in demo_passwords:
                 existing.password_hash = hash_password(demo_passwords[username])
+            elif config.RESET_BOOTSTRAP_PASSWORDS:
+                existing.password_hash = hash_password(configured_password)
             continue
         password = (
             demo_passwords[username]

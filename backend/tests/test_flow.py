@@ -159,6 +159,39 @@ def test_demo_bootstrap_requires_a_configured_role_password(
         bootstrap_users(db)
 
 
+def test_bootstrap_password_reset_rotates_all_existing_roles(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(config, "DEMO_MODE", False)
+    monkeypatch.setattr(config, "RESET_BOOTSTRAP_PASSWORDS", True)
+    passwords = {
+        "admin": "rotated-test-admin-password",
+        "officer": "rotated-test-officer-password",
+        "regulatory": "rotated-test-regulatory-password",
+        "institution": "rotated-test-institution-password",
+        "compliance": "rotated-test-compliance-password",
+    }
+    for username, password in passwords.items():
+        config_name = {
+            "admin": "ADMIN_PASSWORD",
+            "officer": "OFFICER_PASSWORD",
+            "regulatory": "REGULATORY_PASSWORD",
+            "institution": "INSTITUTION_PASSWORD",
+            "compliance": "COMPLIANCE_ADMIN_PASSWORD",
+        }[username]
+        monkeypatch.setattr(config, config_name, password)
+
+    with SessionLocal() as db:
+        bootstrap_users(db)
+
+    for username, password in passwords.items():
+        response = client.post(
+            "/api/auth/login",
+            json={"username": username, "password": password},
+        )
+        assert response.status_code == 200, response.text
+
+
 def test_complete_intake_review_and_audit_flow(client: TestClient, auth_headers: dict[str, str]):
     application = create_application(client, auth_headers)
     pdf = make_pdf(

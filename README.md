@@ -288,3 +288,5 @@ The project uses the backend Dockerfile so scanned-PDF OCR keeps its Tesseract
 runtime. A Vercel-managed `*.vercel.app` domain is assigned to the project;
 add a custom domain separately if desired. Do not use this demonstration
 application for official accreditation decisions.
+#   R e g u l a S h i e l d  
+ 

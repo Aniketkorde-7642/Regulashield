@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#101b2d">
+    <title>Regula Shield | Evidence Review</title>
+    <link rel="stylesheet" href="/static/app.css">
+  </head>
+  <body>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <main id="login-screen" class="login-shell">
+      <section class="login-card">
+        <div class="brand-mark">RS</div>
+        <p class="eyebrow">EVIDENCE REVIEW WORKSPACE</p>
+        <h1>Regula Shield</h1>
+        <p class="muted">Sign in to review synthetic academic applications.</p>
+        <form id="login-form" class="form-stack">
+          <label>Username<input name="username" autocomplete="username" required value="officer"></label>
+          <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+          <button class="button primary" type="submit">Sign in <span aria-hidden="true">→</span></button>
+          <p id="login-error" class="error-text" hidden></p>
+        </form>
+        <p class="tiny-note">First run? Find the generated officer password in the server console.</p>
+      </section>
+    </main>
+
+    <div id="app-shell" hidden>
+      <aside class="sidebar">
+        <a class="brand" href="/" aria-label="Regula Shield home"><span class="brand-mark">RS</span><span>Regula<span class="brand-light">Shield</span></span></a>
+        <p class="nav-label">WORKSPACE</p>
+        <button class="nav-item active" data-nav="applications"><span>▤</span> Applications</button>
+        <button class="nav-item" data-nav="audit"><span>◷</span> Audit trail</button>
+        <div class="sidebar-foot">
+          <span class="status-dot"></span>
+          <span>Local review environment</span>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div><span class="eyebrow">REGULATORY WORKFLOW</span><h1 id="page-title">Applications</h1></div>
+          <div class="user-menu"><div class="avatar" id="user-avatar">O</div><span id="user-label"></span><button class="button ghost small" id="logout-button">Sign out</button></div>
+        </header>
+
+        <section id="applications-view">
+          <div class="stats-grid">
+            <article class="stat-card"><span class="stat-icon indigo">▤</span><div><p>Total applications</p><strong id="stat-applications">—</strong></div></article>
+            <article class="stat-card"><span class="stat-icon amber">◷</span><div><p>In review</p><strong id="stat-review">—</strong></div></article>
+            <article class="stat-card"><span class="stat-icon teal">▧</span><div><p>Documents processed</p><strong id="stat-documents">—</strong></div></article>
+            <article class="stat-card"><span class="stat-icon rose">⚑</span><div><p>Open findings</p><strong id="stat-findings">—</strong></div></article>
+          </div>
+          <section class="panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">INTAKE & REVIEW</p><h2>Applications</h2><p class="muted">Track evidence from intake through officer decision.</p></div>
+              <button id="new-application-button" class="button primary">＋ New application</button>
+            </div>
+            <div class="table-wrap">
+              <table><thead><tr><th>Application</th><th>Institution</th><th>Academic year</th><th>Evidence</th><th>Status</th><th></th></tr></thead>
+                <tbody id="application-rows"></tbody>
+              </table>
+              <div id="empty-applications" class="empty-state" hidden><div class="empty-icon">▤</div><h3>No applications yet</h3><p>Create an application to start a document review.</p><button class="button secondary" data-action="new-application">Create first application</button></div>
+            </div>
+          </section>
+          <p class="disclaimer"><strong>Demo only.</strong> Rules and issuer checks are synthetic and do not represent official regulatory decisions.</p>
+        </section>
+
+        <section id="audit-view" hidden>
+          <section class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">TRACEABILITY</p><h2>Audit trail</h2><p class="muted">Append-only events linked by SHA-256 hashes.</p></div><button id="refresh-audit" class="button secondary">Refresh</button></div>
+            <div id="audit-integrity" class="integrity"></div>
+            <div id="audit-entries" class="timeline"></div>
+          </section>
+        </section>
+
+        <section id="detail-view" hidden>
+          <div class="back-row"><button class="button ghost" id="back-button">← All applications</button><div class="user-menu"><button class="button secondary small" data-action="refresh-application">Refresh status</button><span id="detail-status" class="status-pill"></span></div></div>
+          <div id="application-detail"></div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="application-dialog">
+      <form id="application-form" class="dialog-form">
+        <div class="dialog-title"><div><p class="eyebrow">NEW INTAKE</p><h2>Create application</h2></div><button type="button" class="icon-button" data-close-dialog aria-label="Close">×</button></div>
+        <div class="form-grid">
+          <label>Application number<input name="application_number" required maxlength="64" placeholder="APP-2026-001"></label>
+          <label>Institution ID<input name="institution_id" required maxlength="64" placeholder="INST-001"></label>
+          <label class="wide">Institution name<input name="institution_name" required maxlength="256" placeholder="Example Technical Institute"></label>
+          <label>Category<select name="category"><option>EOA</option><option>Extension</option><option>New program</option></select></label>
+          <label>Academic year<input name="academic_year" required pattern="\d{4}-\d{2}" placeholder="2026-27"></label>
+          <label>Declared faculty<input name="declared_faculty" type="number" min="0" required value="0"></label>
+          <label>Declared students<input name="declared_student_count" type="number" min="0" required value="0"></label>
+          <label class="wide">Declared land area (acres)<input name="declared_land_area" type="number" min="0" step="0.01" required value="0"></label>
+        </div>
+        <div class="dialog-actions"><button type="button" class="button secondary" data-close-dialog>Cancel</button><button class="button primary" type="submit">Create application</button></div>
+      </form>
+    </dialog>
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>

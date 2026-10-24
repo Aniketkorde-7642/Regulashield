@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+**/.env
+**/.env.*
+!**/.env.example
+.vercel/
+frontend/.next/
+frontend/.next-dev/
+frontend/out/
+frontend/node_modules/
+frontend/*.tsbuildinfo
+backend/storage/*
+!backend/storage/.gitkeep
+sample_data/generated/

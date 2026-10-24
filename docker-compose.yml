@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: regula
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: regula_shield
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U regula -d regula_shield"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://regula:${POSTGRES_PASSWORD}@postgres:5432/regula_shield
+      STORAGE_DIR: /data/uploads
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+      OFFICER_PASSWORD: ${OFFICER_PASSWORD:?Set OFFICER_PASSWORD in .env}
+      REGULATORY_PASSWORD: ${REGULATORY_PASSWORD:?Set REGULATORY_PASSWORD in .env}
+      INSTITUTION_PASSWORD: ${INSTITUTION_PASSWORD:?Set INSTITUTION_PASSWORD in .env}
+      COMPLIANCE_ADMIN_PASSWORD: ${COMPLIANCE_ADMIN_PASSWORD:?Set COMPLIANCE_ADMIN_PASSWORD in .env}
+      DEMO_MODE: ${DEMO_MODE:-false}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-15728640}
+      FIELD_CONFIDENCE_THRESHOLD: ${FIELD_CONFIDENCE_THRESHOLD:-0.75}
+    volumes:
+      - ./backend/storage:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        BACKEND_URL: http://backend:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

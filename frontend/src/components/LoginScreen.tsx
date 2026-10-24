@@ -18,6 +18,7 @@ export function LoginScreen() {
   const [selectedRole, setSelectedRole] = useState("officer");
   const [displayName, setDisplayName] = useState("");
   const [registering, setRegistering] = useState(false);
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +39,7 @@ export function LoginScreen() {
   function selectRole(roleUsername: string) {
     setSelectedRole(roleUsername);
     setUsername(roleUsername);
+    setPassword("");
     if (passwordInputRef.current) passwordInputRef.current.value = "";
     setError(null);
   }
@@ -46,7 +48,9 @@ export function LoginScreen() {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const submittedUsername = String(formData.get("username") ?? "").trim();
-    const submittedPassword = String(formData.get("password") ?? "");
+    const submittedPassword = passwordInputRef.current?.value
+      ?? String(formData.get("password") ?? "");
+    setPassword(submittedPassword);
     if (registering) {
       setBusy(true);
       setError(null);
@@ -103,6 +107,7 @@ export function LoginScreen() {
             <label htmlFor="username">Username</label>
             {!registering && <button className="button button-secondary login-autofill" type="button" disabled={busy} onClick={() => {
               setUsername(selectedRoleDetails?.username ?? "");
+              setPassword("");
               if (passwordInputRef.current) passwordInputRef.current.value = "";
               setError(null);
               window.requestAnimationFrame(() => passwordInputRef.current?.focus());
@@ -113,7 +118,7 @@ export function LoginScreen() {
           <input id="username" name="username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} minLength={registering ? 3 : undefined} maxLength={80} required />
           <div className="password-label"><label htmlFor="password">Password</label><span>{registering ? "At least 12 characters" : "Your private account password"}</span></div>
           <div className="password-input">
-            <input key={registering ? "registration-password" : "login-password"} ref={passwordInputRef} id="password" name="password" type={showPassword ? "text" : "password"} autoComplete={registering ? "new-password" : "current-password"} defaultValue="" minLength={registering ? 12 : undefined} maxLength={256} required />
+            <input key={registering ? "registration-password" : "login-password"} ref={passwordInputRef} id="password" name="password" type={showPassword ? "text" : "password"} autoComplete={registering ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.currentTarget.value)} onInput={(event) => setPassword(event.currentTarget.value)} onBlur={(event) => setPassword(event.currentTarget.value)} minLength={registering ? 12 : undefined} maxLength={256} required />
             <button type="button" aria-label={showPassword ? "Hide password" : "Show password"} title={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}<span>{showPassword ? "Hide" : "Show"}</span></button>
           </div>
           {registering && <small>Use at least 12 characters. New accounts are created with the Institution Applicant role.</small>}
@@ -122,7 +127,7 @@ export function LoginScreen() {
           <button className="button button-primary login-submit" type="submit" disabled={busy}>{busy ? (registering ? "Creating account…" : "Signing in…") : registering ? "Create Institution Applicant account" : <>Login <ArrowRight size={17} /></>}</button>
         </form>
         {registering && <div className="login-help"><span className="status-dot" />Create an institution account to submit applications for System Administrator review.</div>}
-        <button className="text-button login-mode-toggle" type="button" disabled={busy} onClick={() => { setRegistering((current) => !current); setError(null); }}>
+        <button className="text-button login-mode-toggle" type="button" disabled={busy} onClick={() => { setRegistering((current) => !current); setPassword(""); setError(null); }}>
           {registering ? "Already have an account? Sign in" : "New Institution Applicant? Create an account"}
         </button>
       </section>

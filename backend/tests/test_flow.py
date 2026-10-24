@@ -766,6 +766,21 @@ def test_admin_user_management_and_role_permissions(client: TestClient):
     assert created.status_code == 201, created.text
     assert created.json()["username"] == "new-institution"
     assert "password" not in created.json()
+    reset = client.patch(
+        f"/api/users/{created.json()['id']}",
+        headers=admin_headers,
+        json={"password": "updated-institution-password"},
+    )
+    assert reset.status_code == 200, reset.text
+    assert "password" not in reset.json()
+    assert client.post(
+        "/api/auth/login",
+        json={"username": "new-institution", "password": "long-institution-password"},
+    ).status_code == 401
+    assert client.post(
+        "/api/auth/login",
+        json={"username": "new-institution", "password": "updated-institution-password"},
+    ).status_code == 200
     assert client.post(
         "/api/users",
         headers=admin_headers,

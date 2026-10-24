@@ -128,6 +128,7 @@ function AdminDashboard() {
   const [usersError, setUsersError] = useState<string | null>(null);
   const [security, setSecurity] = useState<SecurityOverview | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [resetTarget, setResetTarget] = useState<ManagedUser | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [roleEdits, setRoleEdits] = useState<Record<string, CreateUserPayload["role"]>>({});
 
@@ -178,6 +179,16 @@ function AdminDashboard() {
     }
   }
 
+  async function resetPassword(user: ManagedUser, password: string) {
+    setSavingId(user.id);
+    try {
+      await api.updateUser(user.id, { password });
+      setResetTarget(null);
+    } finally {
+      setSavingId(null);
+    }
+  }
+
   return (
     <>
       <DashboardHeader
@@ -212,7 +223,7 @@ function AdminDashboard() {
       </section>}
       <section className="panel">
         <div className="panel-heading">
-          <div><h3>User accounts</h3><p>Assign the least-privilege role needed for each person.</p></div>
+          <div><h3>User accounts</h3><p>Create an individual account for each person, assign the least-privilege role, and reset passwords when needed.</p></div>
           <button className="button button-primary" onClick={() => setShowCreate(true)}><Plus size={16} /> Create user</button>
         </div>
         <DashboardError error={usersError} />
@@ -234,6 +245,7 @@ function AdminDashboard() {
               <td>{formatDate(user.created_at)}</td>
               <td className="user-actions">
                 <button className="button button-secondary compact" disabled={savingId === user.id || (roleEdits[user.id] ?? user.role) === user.role} onClick={() => void updateRole(user)}>Update role</button>
+                <button className="button button-secondary compact" disabled={savingId === user.id || !user.is_active} onClick={() => setResetTarget(user)}>Reset password</button>
                 <button className="button button-secondary compact" disabled={savingId === user.id} onClick={() => void toggleUser(user)}>{user.is_active ? "Disable" : "Enable"}</button>
               </td>
             </tr>)}
@@ -242,7 +254,55 @@ function AdminDashboard() {
         </table></div>
       </section>
       {showCreate && <CreateUserForm onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); void loadUsers(); refresh(); }} />}
+      {resetTarget && <ResetPasswordForm user={resetTarget} busy={savingId === resetTarget.id} onClose={() => setResetTarget(null)} onReset={(password) => resetPassword(resetTarget, password)} />}
     </>
+  );
+}
+
+function ResetPasswordForm({
+  user,
+  busy,
+  onClose,
+  onReset,
+}: {
+  user: ManagedUser;
+  busy: boolean;
+  onClose: () => void;
+  onReset: (password: string) => Promise<void>;
+}) {
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const values = new FormData(event.currentTarget);
+    const password = String(values.get("password"));
+    if (password !== String(values.get("confirm-password"))) {
+      setError("The passwords do not match.");
+      return;
+    }
+    setError(null);
+    try {
+      await onReset(password);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to reset the user's password.");
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
+      <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="reset-password-title">
+        <div className="modal-heading"><div><p className="eyebrow">SYSTEM ADMINISTRATION</p><h2 id="reset-password-title">Reset account password</h2><p>Set a new private password for {user.display_name} ({user.username}).</p></div></div>
+        <form onSubmit={submit}>
+          <div className="form-grid">
+            <label className="span-two">New password<input name="password" type="password" required minLength={12} maxLength={256} autoComplete="new-password" /></label>
+            <label className="span-two">Confirm new password<input name="confirm-password" type="password" required minLength={12} maxLength={256} autoComplete="new-password" /></label>
+            <small className="span-two">Use at least 12 characters. Share the new password with the account holder privately.</small>
+          </div>
+          {error && <div className="alert alert-error" role="alert">{error}</div>}
+          <div className="modal-actions"><button type="button" className="button button-secondary" disabled={busy} onClick={onClose}>Cancel</button><button type="submit" className="button button-primary" disabled={busy}>{busy ? "Resetting…" : "Reset password"}</button></div>
+        </form>
+      </section>
+    </div>
   );
 }
 

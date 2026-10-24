@@ -16,8 +16,8 @@ const LOGIN_ROLES = [
 
 export function LoginScreen() {
   const { login, registerInstitution } = useAuth();
-  const [username, setUsername] = useState("officer");
-  const [selectedRole, setSelectedRole] = useState("officer");
+  const [username, setUsername] = useState("");
+  const [selectedRole, setSelectedRole] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [registering, setRegistering] = useState(false);
   const [password, setPassword] = useState("");
@@ -26,7 +26,7 @@ export function LoginScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const registeringRef = useRef(false);
-  const selectedRoleRef = useRef("officer");
+  const selectedRoleRef = useRef("");
   const credentialsLoadedRef = useRef(false);
   const pendingDemoLoginRef = useRef<string | null>(null);
 
@@ -98,7 +98,7 @@ export function LoginScreen() {
           <h1>Welcome back</h1>
           <p>Sign in to open your role-specific application and compliance workspace.</p>
         </div>
-        {!registering && <div className="login-roles" aria-label="Choose a role to sign in">
+        {!registering && Object.keys(demoPasswords).length > 0 && <div className="login-roles" aria-label="Choose a demo role to sign in">
           {LOGIN_ROLES.map((role) => (
             <button
               key={role.username}
@@ -140,7 +140,7 @@ export function LoginScreen() {
           {error && <div className="alert alert-error" role="alert">{error}</div>}
           <button className="button button-primary login-submit" type="submit" disabled={busy}>{busy ? (registering ? "Creating account…" : "Signing in…") : registering ? "Create Institution Applicant account" : <>Sign in <ArrowRight size={17} /></>}</button>
         </form>
-        <div className="login-help"><span className="status-dot" />{registering ? "Create an institution account to submit applications for System Administrator review." : "Use your assigned credentials or create an Institution Applicant account."}</div>
+        <div className="login-help"><span className="status-dot" />{registering ? "Create an institution account to submit applications for System Administrator review." : "Use your individual username and password. Contact the System Administrator to create or reset a staff account."}</div>
         <button className="text-button login-mode-toggle" type="button" disabled={busy} onClick={() => { setRegistering((current) => { registeringRef.current = !current; return !current; }); setError(null); setPassword(""); }}>
           {registering ? "Already have an account? Sign in" : "New Institution Applicant? Create an account"}
         </button>

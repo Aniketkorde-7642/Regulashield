@@ -250,8 +250,10 @@ PostgreSQL provider and a **private** Blob store, and configure these project
 environment variables for Production and Preview:
 
 - `DATABASE_URL`: provider's PostgreSQL URL (use its non-pooling URL if offered).
-- Connect a **private** Blob store to the Vercel project. Production uploads use
-  its OIDC-connected `BLOB_STORE_ID`; do not use a public Blob store for evidence.
+- Connect the **private** Blob store to the Vercel project. Production uploads
+  use its OIDC-connected `BLOB_STORE_ID`, and the backend needs
+  `BLOB_READ_WRITE_TOKEN` (or a backend-provided `VERCEL_OIDC_TOKEN`) to read
+  and process private evidence. Do not use a public Blob store token for evidence.
 - `SECRET_KEY`: a stable, randomly generated signing key (at least 32 random
   bytes); keep it private and do not commit it.
 - `ADMIN_PASSWORD`: a strong initial System Administrator password.

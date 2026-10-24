@@ -41,8 +41,16 @@ def read_document(key: str) -> Path:
 def read_document_bytes(key: str) -> bytes:
     if config.DOCUMENT_STORAGE == "vercel_blob":
         from vercel.blob import sync as blob
+        from vercel.blob.errors import BlobCredentialsError
 
-        return blob.get_blob(key, access="private").body
+        try:
+            return blob.get_blob(key, access="private").body
+        except BlobCredentialsError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Private Blob credentials are unavailable. Configure "
+                "BLOB_READ_WRITE_TOKEN or VERCEL_OIDC_TOKEN for the private store.",
+            ) from exc
     return read_document(key).read_bytes()
 
 

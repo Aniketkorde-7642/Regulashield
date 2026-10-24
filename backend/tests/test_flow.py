@@ -447,6 +447,36 @@ def test_private_blob_document_registration_is_application_scoped(
     assert rejected.status_code == 422
 
 
+def test_private_blob_credentials_failure_is_reported_as_service_unavailable(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from vercel.blob import sync as blob
+    from vercel.blob.errors import BlobCredentialsError
+
+    application = create_application(client, auth_headers)
+    storage_key = f"evidence/{application['id']}/{uuid4()}.pdf"
+    monkeypatch.setattr(config, "DOCUMENT_STORAGE", "vercel_blob")
+
+    def raise_missing_credentials(*args, **kwargs):
+        raise BlobCredentialsError("Missing Blob credentials")
+
+    monkeypatch.setattr(blob, "get_blob", raise_missing_credentials)
+    response = client.post(
+        f"/api/applications/{application['id']}/documents/from-blob",
+        headers=auth_headers,
+        json={
+            "storage_key": storage_key,
+            "document_type": "other",
+            "filename": "evidence.pdf",
+        },
+    )
+
+    assert response.status_code == 503
+    assert "BLOB_READ_WRITE_TOKEN" in response.json()["detail"]
+
+
 def test_approval_is_blocked_until_high_findings_are_resolved(
     client: TestClient, auth_headers: dict[str, str]
 ):

@@ -1,34 +1,27 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, Eye, EyeOff, ShieldCheck } from "lucide-react";
+import { FormEvent, useCallback, useState } from "react";
+import { ArrowRight, Eye, EyeOff, ShieldCheck, UserRound } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
-import { api } from "@/lib/api";
-import type { DemoCredentials } from "@/lib/types";
 
 const LOGIN_ROLES = [
-  { username: "institution", label: "Institution Applicant" },
-  { username: "officer", label: "AICTE Scrutiny Officer" },
-  { username: "regulatory", label: "Regulatory / Verification Officer" },
-  { username: "compliance", label: "Regulatory / Compliance Administrator" },
-  { username: "admin", label: "System Administrator" },
+  { username: "institution", label: "Institution Applicant", detail: "Submit and track institution applications" },
+  { username: "officer", label: "AICTE Scrutiny Officer", detail: "Review application evidence and findings" },
+  { username: "regulatory", label: "Regulatory / Verification Officer", detail: "Verify regulatory evidence and decisions" },
+  { username: "compliance", label: "Regulatory / Compliance Administrator", detail: "Manage draft rules and compliance changes" },
+  { username: "admin", label: "System Administrator", detail: "Manage users, applications, and approvals" },
 ];
 
 export function LoginScreen() {
   const { login, registerInstitution } = useAuth();
-  const [username, setUsername] = useState("");
-  const [selectedRole, setSelectedRole] = useState("");
+  const [username, setUsername] = useState("officer");
+  const [selectedRole, setSelectedRole] = useState("officer");
   const [displayName, setDisplayName] = useState("");
   const [registering, setRegistering] = useState(false);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [demoPasswords, setDemoPasswords] = useState<DemoCredentials>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const registeringRef = useRef(false);
-  const selectedRoleRef = useRef("");
-  const credentialsLoadedRef = useRef(false);
-  const pendingDemoLoginRef = useRef<string | null>(null);
 
   const signIn = useCallback(async (selectedUsername: string, selectedPassword: string) => {
     setBusy(true);
@@ -42,33 +35,12 @@ export function LoginScreen() {
     }
   }, [login]);
 
-  useEffect(() => {
-    let mounted = true;
-    api.demoCredentials()
-      .then((credentials) => {
-        if (!mounted) return;
-        credentialsLoadedRef.current = true;
-        setDemoPasswords(credentials);
-        const pendingUsername = pendingDemoLoginRef.current;
-        pendingDemoLoginRef.current = null;
-        const selectedPassword = credentials[pendingUsername ?? selectedRoleRef.current];
-        if (!registeringRef.current) {
-          setPassword((current) => current || credentials[selectedRoleRef.current] || "");
-        }
-        if (pendingUsername && selectedPassword) {
-          void signIn(pendingUsername, selectedPassword);
-        }
-      })
-      .catch((reason) => {
-        if (mounted) {
-          credentialsLoadedRef.current = true;
-          setError(reason instanceof Error ? reason.message : "Demo sign-in settings could not be loaded.");
-        }
-      });
-    return () => {
-      mounted = false;
-    };
-  }, [signIn]);
+  function selectRole(roleUsername: string) {
+    setSelectedRole(roleUsername);
+    setUsername(roleUsername);
+    setPassword("");
+    setError(null);
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -87,6 +59,8 @@ export function LoginScreen() {
     await signIn(username, password);
   }
 
+  const selectedRoleDetails = LOGIN_ROLES.find((role) => role.username === selectedRole);
+
   return (
     <main className="login-page">
       <div className="login-decoration decoration-one" />
@@ -94,11 +68,13 @@ export function LoginScreen() {
       <section className="login-card">
         <div className="login-brand"><span className="brand-icon"><ShieldCheck size={24} /></span><span>Regula<span className="brand-light">Shield</span></span></div>
         <div className="login-copy">
-          <p className="eyebrow">EVIDENCE REVIEW WORKSPACE</p>
-          <h1>Welcome back</h1>
-          <p>Sign in to open your role-specific application and compliance workspace.</p>
+          <p className="eyebrow">SECURE EVIDENCE REVIEW WORKSPACE</p>
+          <h1>{registering ? "Create your account" : "Sign in to RegulaShield"}</h1>
+          <p>{registering ? "Create an individual Institution Applicant account." : "Choose your role to fill in your username, then sign in with your personal password."}</p>
         </div>
-        {!registering && Object.keys(demoPasswords).length > 0 && <div className="login-roles" aria-label="Choose a demo role to sign in">
+        {!registering && <div className="login-role-section">
+          <div className="login-role-heading"><strong>Select your role</strong><span>Individual account access</span></div>
+          <div className="login-roles" aria-label="Choose your role">
           {LOGIN_ROLES.map((role) => (
             <button
               key={role.username}
@@ -106,42 +82,39 @@ export function LoginScreen() {
               className={`login-role ${selectedRole === role.username ? "selected" : ""}`}
               aria-pressed={selectedRole === role.username}
               disabled={busy}
-              onClick={() => {
-                selectedRoleRef.current = role.username;
-                setUsername(role.username);
-                setSelectedRole(role.username);
-                const selectedPassword = demoPasswords[role.username];
-                setPassword(selectedPassword ?? "");
-                setError(null);
-                if (selectedPassword) {
-                  void signIn(role.username, selectedPassword);
-                } else if (!credentialsLoadedRef.current) {
-                  pendingDemoLoginRef.current = role.username;
-                }
-              }}
+              onClick={() => selectRole(role.username)}
             >
-              {role.label}
+              <span className="login-role-label">{role.label}</span>
+              <span className="login-role-description">{role.detail}</span>
+              <span className="login-role-username">Account username: <strong>{role.username}</strong></span>
             </button>
           ))}
+          </div>
         </div>}
         <form onSubmit={submit} className="login-form">
           {registering && <>
             <label htmlFor="display-name">Institution / applicant name</label>
             <input id="display-name" name="display_name" autoComplete="organization" value={displayName} onChange={(event) => setDisplayName(event.target.value)} minLength={2} maxLength={160} required />
           </>}
-          <label htmlFor="username">Username</label>
+          <div className="login-username-heading">
+            <label htmlFor="username">Username</label>
+            {!registering && <button className="button button-secondary login-autofill" type="button" disabled={busy} onClick={() => { setUsername(selectedRoleDetails?.username ?? ""); setPassword(""); setError(null); }}>
+              <UserRound size={14} /> Auto-Fill
+            </button>}
+          </div>
           <input id="username" name="username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} minLength={registering ? 3 : undefined} maxLength={80} required />
-          <div className="password-label"><label htmlFor="password">Password</label></div>
+          <div className="password-label"><label htmlFor="password">Password</label><span>{registering ? "At least 12 characters" : "Your private account password"}</span></div>
           <div className="password-input">
             <input id="password" name="password" type={showPassword ? "text" : "password"} autoComplete={registering ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} minLength={registering ? 12 : undefined} maxLength={256} required />
-            <button type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
+            <button type="button" aria-label={showPassword ? "Hide password" : "Show password"} title={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}<span>{showPassword ? "Hide" : "Show"}</span></button>
           </div>
           {registering && <small>Use at least 12 characters. New accounts are created with the Institution Applicant role.</small>}
+          {!registering && <small className="login-password-note">Passwords are private and are not shared on this sign-in page. Contact the System Administrator to create or reset a staff account.</small>}
           {error && <div className="alert alert-error" role="alert">{error}</div>}
-          <button className="button button-primary login-submit" type="submit" disabled={busy}>{busy ? (registering ? "Creating account…" : "Signing in…") : registering ? "Create Institution Applicant account" : <>Sign in <ArrowRight size={17} /></>}</button>
+          <button className="button button-primary login-submit" type="submit" disabled={busy}>{busy ? (registering ? "Creating account…" : "Signing in…") : registering ? "Create Institution Applicant account" : <>Login <ArrowRight size={17} /></>}</button>
         </form>
-        <div className="login-help"><span className="status-dot" />{registering ? "Create an institution account to submit applications for System Administrator review." : "Use your individual username and password. Contact the System Administrator to create or reset a staff account."}</div>
-        <button className="text-button login-mode-toggle" type="button" disabled={busy} onClick={() => { setRegistering((current) => { registeringRef.current = !current; return !current; }); setError(null); setPassword(""); }}>
+        {registering && <div className="login-help"><span className="status-dot" />Create an institution account to submit applications for System Administrator review.</div>}
+        <button className="text-button login-mode-toggle" type="button" disabled={busy} onClick={() => { setRegistering((current) => !current); setError(null); setPassword(""); }}>
           {registering ? "Already have an account? Sign in" : "New Institution Applicant? Create an account"}
         </button>
       </section>

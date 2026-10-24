@@ -42,6 +42,13 @@ EXPECTED_DOCUMENTS = {
 }
 
 
+def _schedule_document_processing(
+    db: Session, background_tasks: BackgroundTasks, document: Document
+) -> None:
+    db.close()
+    background_tasks.add_task(process_document, document.id)
+
+
 def _assert_application_access(application: Application, user: User) -> None:
     if has_role(user, "institution") and application.owner_username != user.username:
         raise HTTPException(status_code=404, detail="Application not found.")
@@ -442,7 +449,7 @@ async def upload_document(
     if not data.startswith(b"%PDF-"):
         raise HTTPException(status_code=415, detail="The uploaded file is not a valid PDF.")
     document = _persist_document(db, application, user, filename, document_type, data)
-    background_tasks.add_task(process_document, document.id)
+    _schedule_document_processing(db, background_tasks, document)
     return document
 
 
@@ -490,7 +497,7 @@ def register_blob_document(
         data,
         payload.storage_key,
     )
-    background_tasks.add_task(process_document, document.id)
+    _schedule_document_processing(db, background_tasks, document)
     return document
 
 
@@ -541,7 +548,7 @@ def retry_document_processing(
     )
     db.commit()
     db.refresh(document)
-    background_tasks.add_task(process_document, document.id)
+    _schedule_document_processing(db, background_tasks, document)
     return document
 
 

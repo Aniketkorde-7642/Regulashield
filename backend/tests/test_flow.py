@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import fitz
 import pytest
+from sqlalchemy.orm import object_session
 from fastapi.testclient import TestClient
 
 from app import config
@@ -493,7 +494,26 @@ def test_private_blob_document_registration_is_application_scoped(
     storage_key = f"evidence/{application['id']}/{uuid4()}.pdf"
     monkeypatch.setattr(config, "DOCUMENT_STORAGE", "vercel_blob")
     monkeypatch.setattr(applications_api, "read_document_bytes", lambda _: make_pdf("Evidence"))
-    monkeypatch.setattr(applications_api, "process_document", lambda _: None)
+    persisted_documents = {}
+    persist_document = applications_api._persist_document
+
+    def track_persisted_document(db, *args, **kwargs):
+        document = persist_document(db, *args, **kwargs)
+        persisted_documents[document.id] = (db, document)
+        return document
+
+    def verify_background_task_has_database_connection(document_id):
+        db, document = persisted_documents[document_id]
+        assert object_session(document) is None
+        with SessionLocal() as processing_db:
+            assert processing_db.get(Document, document_id) is not None
+
+    monkeypatch.setattr(applications_api, "_persist_document", track_persisted_document)
+    monkeypatch.setattr(
+        applications_api,
+        "process_document",
+        verify_background_task_has_database_connection,
+    )
 
     registered = client.post(
         f"/api/applications/{application['id']}/documents/from-blob",

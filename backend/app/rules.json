@@ -1,0 +1,18 @@
+[
+  {
+    "id": "regulatory.faculty_minimum",
+    "field": "declared_faculty",
+    "operator": ">=",
+    "threshold": 1,
+    "severity": "medium",
+    "message": "The declared faculty count is below the synthetic minimum."
+  },
+  {
+    "id": "regulatory.land_area_positive",
+    "field": "declared_land_area",
+    "operator": ">",
+    "threshold": 0,
+    "severity": "low",
+    "message": "No positive land area was declared."
+  }
+]

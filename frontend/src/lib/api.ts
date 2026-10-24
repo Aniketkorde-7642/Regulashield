@@ -1,4 +1,4 @@
-import { upload } from "@vercel/blob/client";
+import { uploadPresigned } from "@vercel/blob/client";
 import type {
   ApplicationReview,
   ApplicationDecisionReport,
@@ -199,17 +199,51 @@ export const api = {
     if (process.env.NEXT_PUBLIC_BLOB_UPLOADS === "true") {
       const token = getToken();
       if (!token) throw new Error("Sign in before uploading evidence.");
-      const blob = await upload(
-        `evidence/${applicationId}/${crypto.randomUUID()}.pdf`,
-        file,
-        {
+      const pathname = `evidence/${applicationId}/${crypto.randomUUID()}.pdf`;
+      const clientPayload = JSON.stringify({ applicationId, documentType });
+      const uploadEvent = {
+        type: "blob.generate-presigned-url",
+        payload: { pathname, clientPayload, multipart: false },
+      };
+      let blob: Awaited<ReturnType<typeof uploadPresigned>>;
+      try {
+        blob = await uploadPresigned(pathname, file, {
           access: "private",
           contentType: "application/pdf",
           handleUploadUrl: "/blob-upload",
           headers: { Authorization: `Bearer ${token}` },
-          clientPayload: JSON.stringify({ applicationId, documentType }),
-        },
-      );
+          clientPayload,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("Failed to retrieve the presigned URL")) {
+          const response = await fetch("/blob-upload", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(uploadEvent),
+            cache: "no-store",
+          });
+          let result: unknown;
+          try {
+            result = await response.json();
+          } catch {
+            result = null;
+          }
+          if (!response.ok) {
+            const message =
+              typeof result === "object"
+              && result !== null
+              && "error" in result
+              && typeof result.error === "string"
+                ? result.error
+                : `Unable to authorize evidence upload (HTTP ${response.status}).`;
+            throw new Error(message);
+          }
+        }
+        throw error;
+      }
       return api.registerBlobDocument(applicationId, blob.pathname, documentType, file.name);
     }
     const form = new FormData();

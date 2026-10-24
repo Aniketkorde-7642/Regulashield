@@ -78,8 +78,12 @@ async def lifespan(_: FastAPI):
             missing_settings.append("DATABASE_URL")
         if config.DOCUMENT_STORAGE != "vercel_blob":
             missing_settings.append("DOCUMENT_STORAGE=vercel_blob")
-        elif not os.getenv("BLOB_READ_WRITE_TOKEN"):
-            missing_settings.append("BLOB_READ_WRITE_TOKEN")
+        elif not os.getenv("BLOB_READ_WRITE_TOKEN") and not (
+            os.getenv("BLOB_STORE_ID") and os.getenv("VERCEL") == "1"
+        ):
+            missing_settings.append(
+                "BLOB_READ_WRITE_TOKEN or a Vercel OIDC-connected BLOB_STORE_ID"
+            )
         if missing_settings:
             raise RuntimeError(
                 "Vercel deployment is missing required settings: "

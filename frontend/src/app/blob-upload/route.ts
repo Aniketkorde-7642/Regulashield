@@ -1,4 +1,5 @@
-import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
+import { issueSignedToken } from "@vercel/blob";
+import { handleUploadPresigned, type HandleUploadPresignedBody } from "@vercel/blob/client";
 import { NextResponse } from "next/server";
 
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
@@ -19,25 +20,25 @@ export async function POST(request: Request) {
   if (!authorization?.startsWith("Bearer ")) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+  if (!process.env.BLOB_STORE_ID || !process.env.BLOB_WEBHOOK_PUBLIC_KEY) {
     return NextResponse.json(
-      { error: "Evidence uploads are not configured. Set BLOB_READ_WRITE_TOKEN in the Vercel project." },
+      { error: "Evidence uploads require a private Blob store connected to this Vercel project." },
       { status: 503 },
     );
   }
 
-  let body: HandleUploadBody;
+  let body: HandleUploadPresignedBody;
   try {
-    body = (await request.json()) as HandleUploadBody;
+    body = (await request.json()) as HandleUploadPresignedBody;
   } catch {
     return NextResponse.json({ error: "Invalid upload request." }, { status: 400 });
   }
 
   try {
-    const jsonResponse = await handleUpload({
+    const jsonResponse = await handleUploadPresigned({
       body,
       request,
-      onBeforeGenerateToken: async (pathname, clientPayload) => {
+      getSignedToken: async (pathname, clientPayload) => {
         let payload: { applicationId?: string; documentType?: string };
         try {
           payload = JSON.parse(clientPayload ?? "") as typeof payload;
@@ -71,11 +72,17 @@ export async function POST(request: Request) {
           throw new Error("Documents cannot be added after submission for review.");
         }
         return {
-          addRandomSuffix: false,
-          allowedContentTypes: ["application/pdf"],
-          maximumSizeInBytes: MAX_UPLOAD_BYTES,
+          token: await issueSignedToken({
+            storeId: process.env.BLOB_STORE_ID,
+            pathname,
+            operations: ["put"],
+            validUntil: Date.now() + 10 * 60 * 1000,
+            allowedContentTypes: ["application/pdf"],
+            maximumSizeInBytes: MAX_UPLOAD_BYTES,
+          }),
         };
       },
+      webhookPublicKey: process.env.BLOB_WEBHOOK_PUBLIC_KEY,
     });
     return NextResponse.json(jsonResponse);
   } catch (error) {

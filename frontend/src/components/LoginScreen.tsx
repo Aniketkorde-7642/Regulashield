@@ -124,7 +124,7 @@ export function LoginScreen() {
               <span className="login-role-label">{role.label}</span>
               <span className="login-role-description">{role.detail}</span>
               <span className="login-role-username">Account username: <strong>{role.username}</strong></span>
-              <span className="login-role-username">Password = <strong>Password@123</strong></span>
+              {demoPasswords[role.username] && <span className="login-role-username">Demo password: <strong>{demoPasswords[role.username]}</strong></span>}
             </button>
           ))}
           </div>

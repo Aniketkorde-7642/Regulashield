@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
@@ -21,12 +21,13 @@ from app.schemas import (
     ApplicationOut,
     DocumentOut,
     InstitutionApplicationUpdate,
+    StoredDocumentCreate,
 )
 from app.services.audit import append_audit
 from app.services.extraction import overall_metadata_match_score
 from app.services.pipeline import process_document
 from app.services.security import get_current_user, has_role, require_role
-from app.services.storage import delete_document, read_document, save_pdf
+from app.services.storage import delete_document, read_document_bytes, save_pdf
 from app.services.validation import get_pdf_page_count, load_rules, regulatory_findings
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,61 @@ EXPECTED_DOCUMENTS = {
 def _assert_application_access(application: Application, user: User) -> None:
     if has_role(user, "institution") and application.owner_username != user.username:
         raise HTTPException(status_code=404, detail="Application not found.")
+
+
+def _persist_document(
+    db: Session,
+    application: Application,
+    user: User,
+    filename: str,
+    document_type: str,
+    data: bytes,
+    storage_key: str | None = None,
+) -> Document:
+    try:
+        page_count = get_pdf_page_count(data)
+    except (ValueError, RuntimeError) as exc:
+        logger.info("Rejected invalid PDF upload: %s", exc)
+        if storage_key:
+            delete_document(storage_key)
+        raise HTTPException(status_code=422, detail=f"Unable to read PDF: {exc}") from None
+
+    key = storage_key or save_pdf(data)
+    document = Document(
+        id=str(uuid4()),
+        application_id=application.id,
+        filename=filename[:255],
+        document_type=document_type,
+        content_type="application/pdf",
+        storage_key=key,
+        file_hash=hashlib.sha256(data).hexdigest(),
+        page_count=page_count,
+        status="uploaded",
+    )
+    db.add(document)
+    application.status = "processing"
+    try:
+        db.flush()
+        append_audit(
+            db,
+            actor=user.username,
+            action="document.uploaded",
+            entity_type="document",
+            entity_id=document.id,
+            details={
+                "application_id": application.id,
+                "filename": document.filename,
+                "document_type": document.document_type,
+                "file_hash": document.file_hash,
+            },
+        )
+        db.commit()
+        db.refresh(document)
+    except Exception:
+        db.rollback()
+        delete_document(key)
+        raise
+    return document
 
 
 @router.get("", response_model=list[ApplicationOut])
@@ -371,48 +427,55 @@ async def upload_document(
         raise HTTPException(status_code=413, detail="PDF exceeds the configured upload limit.")
     if not data.startswith(b"%PDF-"):
         raise HTTPException(status_code=415, detail="The uploaded file is not a valid PDF.")
-    try:
-        page_count = get_pdf_page_count(data)
-    except (ValueError, RuntimeError) as exc:
-        logger.info("Rejected invalid PDF upload: %s", exc)
-        raise HTTPException(status_code=422, detail=f"Unable to read PDF: {exc}") from None
+    document = _persist_document(db, application, user, filename, document_type, data)
+    background_tasks.add_task(process_document, document.id)
+    return document
 
-    storage_key = save_pdf(data)
-    document = Document(
-        id=str(uuid4()),
-        application_id=application.id,
-        filename=filename[:255],
-        document_type=document_type,
-        content_type="application/pdf",
-        storage_key=storage_key,
-        file_hash=hashlib.sha256(data).hexdigest(),
-        page_count=page_count,
-        status="uploaded",
+
+@router.post(
+    "/{application_id}/documents/from-blob",
+    response_model=DocumentOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def register_blob_document(
+    application_id: str,
+    payload: StoredDocumentCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Document:
+    if config.DOCUMENT_STORAGE != "vercel_blob":
+        raise HTTPException(status_code=503, detail="Private document storage is not configured.")
+    require_role(user, "admin", "officer", "institution")
+    application = db.get(Application, application_id)
+    if application is None:
+        raise HTTPException(status_code=404, detail="Application not found.")
+    _assert_application_access(application, user)
+    if application.status in {"approved", "rejected", "pending_admin_review"}:
+        raise HTTPException(status_code=409, detail="Documents cannot be added after submission for review.")
+    if not payload.storage_key.startswith(f"evidence/{application.id}/"):
+        raise HTTPException(status_code=422, detail="Uploaded file does not belong to this application.")
+
+    filename = Path(payload.filename.replace("\\", "/")).name
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=415, detail="Only PDF documents are accepted.")
+    data = read_document_bytes(payload.storage_key)
+    if len(data) > config.MAX_UPLOAD_BYTES:
+        delete_document(payload.storage_key)
+        raise HTTPException(status_code=413, detail="PDF exceeds the configured upload limit.")
+    if not data.startswith(b"%PDF-"):
+        delete_document(payload.storage_key)
+        raise HTTPException(status_code=415, detail="The uploaded file is not a valid PDF.")
+
+    document = _persist_document(
+        db,
+        application,
+        user,
+        filename,
+        payload.document_type,
+        data,
+        payload.storage_key,
     )
-    db.add(document)
-    application.status = "processing"
-    try:
-        db.flush()
-        append_audit(
-            db,
-            actor=user.username,
-            action="document.uploaded",
-            entity_type="document",
-            entity_id=document.id,
-            details={
-                "application_id": application.id,
-                "filename": document.filename,
-                "document_type": document.document_type,
-                "file_hash": document.file_hash,
-            },
-        )
-        db.commit()
-        db.refresh(document)
-    except Exception:
-        db.rollback()
-        delete_document(storage_key)
-        raise
-
     background_tasks.add_task(process_document, document.id)
     return document
 
@@ -473,7 +536,7 @@ def download_document(
     document_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> FileResponse:
+) -> Response:
     require_role(
         user,
         "admin",
@@ -487,7 +550,14 @@ def download_document(
         raise HTTPException(status_code=404, detail="Document not found.")
     _assert_application_access(document.application, user)
     try:
-        path = read_document(document.storage_key)
+        data = read_document_bytes(document.storage_key)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Stored PDF is unavailable.") from None
-    return FileResponse(path, media_type="application/pdf", filename=document.filename)
+    from urllib.parse import quote
+
+    filename = quote(document.filename, safe="")
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )

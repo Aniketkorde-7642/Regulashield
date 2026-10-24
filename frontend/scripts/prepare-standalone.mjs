@@ -7,6 +7,7 @@ const standaloneRoot = resolve(frontendRoot, ".next", "standalone");
 const standaloneServer = resolve(standaloneRoot, "server.js");
 
 if (!existsSync(standaloneServer)) {
+  if (process.env.VERCEL === "1") process.exit(0);
   throw new Error("Standalone server is missing. Run `npm run build` before preparing production assets.");
 }
 

@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import shutil
+from uuid import uuid4
 
 import fitz
 import pytest
 from fastapi.testclient import TestClient
 
 from app import config
+from app.api import applications as applications_api
 from app.db import SessionLocal
-from app.models import Application, User
+from app.models import Application, Document, User
 from app.services.security import DEMO_ROLE_PASSWORDS, bootstrap_users
 
 
@@ -287,6 +289,46 @@ def test_duplicate_application_number_and_non_pdf_are_rejected(
         files={"file": ("malformed.pdf", b"%PDF-1.7\nnot a real PDF", "application/pdf")},
     )
     assert malformed_pdf.status_code == 422
+
+
+def test_private_blob_document_registration_is_application_scoped(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    application = create_application(client, auth_headers)
+    storage_key = f"evidence/{application['id']}/{uuid4()}.pdf"
+    monkeypatch.setattr(config, "DOCUMENT_STORAGE", "vercel_blob")
+    monkeypatch.setattr(applications_api, "read_document_bytes", lambda _: make_pdf("Evidence"))
+    monkeypatch.setattr(applications_api, "process_document", lambda _: None)
+
+    registered = client.post(
+        f"/api/applications/{application['id']}/documents/from-blob",
+        headers=auth_headers,
+        json={
+            "storage_key": storage_key,
+            "document_type": "other",
+            "filename": "evidence.pdf",
+        },
+    )
+    assert registered.status_code == 202, registered.text
+    assert registered.json()["status"] == "uploaded"
+    with SessionLocal() as db:
+        document = db.get(Document, registered.json()["id"])
+        assert document is not None
+        assert document.storage_key == storage_key
+
+    cross_application_key = f"evidence/{uuid4()}/{uuid4()}.pdf"
+    rejected = client.post(
+        f"/api/applications/{application['id']}/documents/from-blob",
+        headers=auth_headers,
+        json={
+            "storage_key": cross_application_key,
+            "document_type": "other",
+            "filename": "evidence.pdf",
+        },
+    )
+    assert rejected.status_code == 422
 
 
 def test_approval_is_blocked_until_high_findings_are_resolved(

@@ -20,26 +20,65 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("regula_shield")
 
 
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    config.STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-    Base.metadata.create_all(bind=engine)
-    if "owner_username" not in {
-        column["name"] for column in inspect(engine).get_columns("applications")
-    }:
-        with engine.begin() as connection:
-            connection.execute(
-                text("ALTER TABLE applications ADD COLUMN owner_username VARCHAR(80)")
-            )
+def initialize_database() -> None:
+    with engine.connect() as connection:
+        is_postgres = engine.dialect.name == "postgresql"
+        if is_postgres:
+            connection.execute(text("SELECT pg_advisory_lock(731968021)"))
+            connection.commit()
+        try:
+            Base.metadata.create_all(bind=connection)
+            columns = {
+                column["name"]
+                for column in inspect(connection).get_columns("applications")
+            }
+            if "owner_username" not in columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE applications ADD COLUMN "
+                        + ("IF NOT EXISTS " if is_postgres else "")
+                        + "owner_username VARCHAR(80)"
+                    )
+                )
             connection.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_applications_owner_username "
                     "ON applications (owner_username)"
                 )
             )
-    with SessionLocal() as db:
-        bootstrap_users(db)
-        seed_rules(db)
+            connection.commit()
+            with SessionLocal(bind=connection) as db:
+                bootstrap_users(db)
+                seed_rules(db)
+        finally:
+            if is_postgres:
+                if connection.in_transaction():
+                    connection.rollback()
+                connection.execute(text("SELECT pg_advisory_unlock(731968021)"))
+                connection.commit()
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    if os.getenv("VERCEL") == "1":
+        missing_settings = []
+        if not config.SECRET_KEY_CONFIGURED:
+            missing_settings.append("SECRET_KEY")
+        if not config.ADMIN_PASSWORD:
+            missing_settings.append("ADMIN_PASSWORD")
+        if config.DEMO_MODE:
+            missing_settings.append("DEMO_MODE=false")
+        if not config.DATABASE_URL.startswith(("postgres://", "postgresql://", "postgresql+")):
+            missing_settings.append("DATABASE_URL")
+        if config.DOCUMENT_STORAGE != "vercel_blob":
+            missing_settings.append("DOCUMENT_STORAGE=vercel_blob")
+        if missing_settings:
+            raise RuntimeError(
+                "Vercel deployment is missing required settings: "
+                + ", ".join(missing_settings)
+            )
+    config.STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+    initialize_database()
     if not os.getenv("SECRET_KEY"):
         logger.warning("SECRET_KEY is not set; tokens will be invalidated after restart.")
     yield
@@ -56,6 +95,7 @@ app.include_router(api_router)
 
 
 @app.get("/health", tags=["health"])
+@app.get("/api/health", tags=["health"])
 def health() -> dict[str, str]:
     return {"status": "ok"}
 

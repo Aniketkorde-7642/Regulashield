@@ -14,7 +14,7 @@ from app.services.extraction import (
     extract_fields,
     value_match_score,
 )
-from app.services.storage import read_document
+from app.services.storage import read_document_bytes
 from app.services.validation import (
     cross_document_findings,
     extract_pdf_document,
@@ -65,7 +65,7 @@ def process_document(document_id: str) -> None:
         document.processing_error = None
         db.commit()
 
-        pdf_bytes = read_document(document.storage_key).read_bytes()
+        pdf_bytes = read_document_bytes(document.storage_key)
         extraction = extract_pdf_document(pdf_bytes)
         raw_text = extraction.raw_text
         page_count = extraction.page_count

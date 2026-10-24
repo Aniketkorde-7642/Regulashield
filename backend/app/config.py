@@ -8,13 +8,17 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = APP_DIR.parent
 STORAGE_DIR = Path(os.getenv("STORAGE_DIR", str(BACKEND_DIR / "storage" / "uploads"))).resolve()
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    f"sqlite:///{(BACKEND_DIR / 'storage' / 'regula.db').as_posix()}",
+DATABASE_URL = (
+    os.getenv("DATABASE_URL")
+    or os.getenv("POSTGRES_URL_NON_POOLING")
+    or os.getenv("POSTGRES_URL")
+    or f"sqlite:///{(BACKEND_DIR / 'storage' / 'regula.db').as_posix()}"
 )
+SECRET_KEY_CONFIGURED = bool(os.getenv("SECRET_KEY"))
 SECRET_KEY = os.getenv("SECRET_KEY") or secrets.token_urlsafe(48)
 TOKEN_EXPIRE_MINUTES = int(os.getenv("TOKEN_EXPIRE_MINUTES", "480"))
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(15 * 1024 * 1024)))
+DOCUMENT_STORAGE = os.getenv("DOCUMENT_STORAGE", "local").strip().casefold()
 FIELD_CONFIDENCE_THRESHOLD = float(os.getenv("FIELD_CONFIDENCE_THRESHOLD", "0.75"))
 OCR_LANGUAGE = os.getenv("OCR_LANGUAGE", "eng")
 OCR_DPI = int(os.getenv("OCR_DPI", "300"))

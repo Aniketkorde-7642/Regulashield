@@ -1,3 +1,4 @@
+import { upload } from "@vercel/blob/client";
 import type {
   ApplicationReview,
   ApplicationDecisionReport,
@@ -20,7 +21,7 @@ import type {
   User,
 } from "@/lib/types";
 
-const API_BASE = "/api/backend";
+const API_BASE = process.env.NODE_ENV === "development" ? "/api/backend" : "/api";
 const TOKEN_KEY = "regula-token";
 
 function getToken(): string | null {
@@ -194,7 +195,23 @@ export const api = {
     request<ApplicationReview>(`/applications/${encodeURIComponent(applicationId)}/review`),
   blockers: (applicationId: string) =>
     request<{ blockers: string[] }>(`/applications/${encodeURIComponent(applicationId)}/blockers`),
-  uploadDocument: (applicationId: string, documentType: string, file: File) => {
+  uploadDocument: async (applicationId: string, documentType: string, file: File) => {
+    if (process.env.NEXT_PUBLIC_BLOB_UPLOADS === "true") {
+      const token = getToken();
+      if (!token) throw new Error("Sign in before uploading evidence.");
+      const blob = await upload(
+        `evidence/${applicationId}/${crypto.randomUUID()}.pdf`,
+        file,
+        {
+          access: "private",
+          contentType: "application/pdf",
+          handleUploadUrl: "/blob-upload",
+          headers: { Authorization: `Bearer ${token}` },
+          clientPayload: JSON.stringify({ applicationId, documentType }),
+        },
+      );
+      return api.registerBlobDocument(applicationId, blob.pathname, documentType, file.name);
+    }
     const form = new FormData();
     form.append("file", file);
     form.append("document_type", documentType);
@@ -203,6 +220,16 @@ export const api = {
       body: form,
     });
   },
+  registerBlobDocument: (
+    applicationId: string,
+    storageKey: string,
+    documentType: string,
+    filename: string,
+  ) =>
+    request<DocumentRecord>(`/applications/${encodeURIComponent(applicationId)}/documents/from-blob`, {
+      method: "POST",
+      body: JSON.stringify({ storage_key: storageKey, document_type: documentType, filename }),
+    }),
   retryDocument: (applicationId: string, documentId: string) =>
     request<DocumentRecord>(
       `/applications/${encodeURIComponent(applicationId)}/documents/${encodeURIComponent(documentId)}/retry`,

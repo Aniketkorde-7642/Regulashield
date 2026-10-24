@@ -236,3 +236,34 @@ versioned sources. The following production capabilities are not implemented:
 legal/privacy review, malware scanning, retention controls, production identity
 management, HTTPS/TLS, database migrations, and backups.
 Human reviewers remain responsible for decisions.
+
+## Deploy on Vercel
+
+The root `vercel.json` defines a Next.js frontend service and a Docker-backed
+FastAPI service. The backend container installs Tesseract and routes are sent
+to FastAPI under `/api/`; all other paths go to Next.js. PostgreSQL and private
+Vercel Blob storage are required because Vercel's container filesystem is
+ephemeral.
+
+Connect the repository to a Vercel project with Services enabled, connect a
+PostgreSQL provider and a **private** Blob store, and configure these project
+environment variables for Production and Preview:
+
+- `DATABASE_URL`: provider's PostgreSQL URL (use its non-pooling URL if offered).
+- `SECRET_KEY`: a stable, randomly generated signing key (at least 32 random
+  bytes); keep it private and do not commit it.
+- `ADMIN_PASSWORD`: a strong initial System Administrator password.
+- `DOCUMENT_STORAGE=vercel_blob`.
+- `DEMO_MODE=false`.
+- `NEXT_PUBLIC_BLOB_UPLOADS=true`.
+
+Optional bootstrap role passwords are `OFFICER_PASSWORD`,
+`REGULATORY_PASSWORD`, `COMPLIANCE_ADMIN_PASSWORD`, and
+`INSTITUTION_PASSWORD`. If omitted, the accounts receive random passwords that
+are not printed in Vercel logs; the administrator can set passwords from the
+user-management dashboard. Do not enable demo mode in a hosted environment.
+
+The project uses the backend Dockerfile so scanned-PDF OCR keeps its Tesseract
+runtime. A Vercel-managed `*.vercel.app` domain is assigned to the project;
+add a custom domain separately if desired. Do not use this demonstration
+application for official accreditation decisions.

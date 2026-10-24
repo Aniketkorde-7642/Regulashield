@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import fitz
 import pytest
 
+from app.db import normalize_database_url
 from app.services.extraction import (
     extract_fields,
     field_label_match_score,
@@ -12,6 +13,15 @@ from app.services.extraction import (
     value_match_score,
 )
 from app.services.validation import cross_document_findings, extract_pdf_document
+
+
+def test_postgres_urls_use_the_psycopg_sqlalchemy_driver():
+    assert normalize_database_url("postgres://user:pass@db/app") == (
+        "postgresql+psycopg://user:pass@db/app"
+    )
+    assert normalize_database_url("postgresql://user:pass@db/app") == (
+        "postgresql+psycopg://user:pass@db/app"
+    )
 
 
 def make_scanned_pdf(text: str = "") -> bytes:

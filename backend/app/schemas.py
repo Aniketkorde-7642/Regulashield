@@ -107,6 +107,25 @@ class InstitutionApplicationUpdate(BaseModel):
         return value
 
 
+class StoredDocumentCreate(BaseModel):
+    storage_key: str = Field(
+        pattern=r"^evidence/[0-9a-fA-F-]{36}/[0-9a-fA-F-]{36}\.pdf$",
+        max_length=128,
+    )
+    filename: str = Field(min_length=1, max_length=255)
+    document_type: str = Field(
+        pattern=r"^(affiliation_letter|faculty_certificate|land_record|fire_safety|other)$"
+    )
+
+    @field_validator("filename")
+    @classmethod
+    def strip_filename(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Filename must not be blank.")
+        return value
+
+
 class ComplianceRuleCreate(BaseModel):
     rule_key: str = Field(min_length=3, max_length=120, pattern=r"^[a-zA-Z0-9_.-]+$")
     academic_year: str = Field(default="all", pattern=r"^(all|\d{4}-\d{2})$")

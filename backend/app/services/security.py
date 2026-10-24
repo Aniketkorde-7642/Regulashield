@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -115,7 +116,7 @@ def bootstrap_users(db: Session) -> None:
                 password_hash=hash_password(password),
             )
         )
-        if not configured_password and not config.DEMO_MODE:
+        if not configured_password and not config.DEMO_MODE and os.getenv("VERCEL") != "1":
             print(f"[regula-shield] First-run {username} password: {password}")
     db.commit()
 

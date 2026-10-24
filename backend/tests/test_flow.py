@@ -11,7 +11,7 @@ from app import config
 from app.api import applications as applications_api
 from app.db import SessionLocal
 from app.models import Application, Document, User
-from app.services.security import DEMO_ROLE_PASSWORDS, bootstrap_users
+from app.services.security import bootstrap_users, demo_role_passwords
 
 
 def make_pdf(text: str) -> bytes:
@@ -104,22 +104,59 @@ def test_role_demo_passwords_are_only_returned_for_demo_accounts(
     monkeypatch.setattr(config, "DEMO_MODE", False)
     assert client.get("/api/auth/demo-credentials").json() == {}
 
+    demo_password = "test-only-demo-password"
+    monkeypatch.setattr(config, "DEMO_ROLE_PASSWORD", demo_password)
     monkeypatch.setattr(config, "DEMO_MODE", True)
     with SessionLocal() as db:
-        db.query(User).delete()
-        db.commit()
         bootstrap_users(db)
 
     response = client.get("/api/auth/demo-credentials")
 
     assert response.status_code == 200
-    assert response.json() == DEMO_ROLE_PASSWORDS
-    for username, password in DEMO_ROLE_PASSWORDS.items():
+    assert response.json() == demo_role_passwords()
+    assert set(response.json()) == {
+        "admin",
+        "officer",
+        "regulatory",
+        "compliance",
+        "institution",
+    }
+    assert set(response.json().values()) == {demo_password}
+    previous_passwords = {
+        "admin": "test-admin-password",
+        "officer": "test-officer-password",
+        "regulatory": "test-regulatory-password",
+        "compliance": "test-compliance-password",
+        "institution": "test-institution-password",
+    }
+    for username, password in response.json().items():
+        previous_login = client.post(
+            "/api/auth/login",
+            json={"username": username, "password": previous_passwords[username]},
+        )
+        assert previous_login.status_code == 401
         login = client.post(
             "/api/auth/login",
             json={"username": username, "password": password},
         )
         assert login.status_code == 200, login.text
+        profile = client.get(
+            "/api/auth/me",
+            headers={"Authorization": "Bearer " + login.json()["access_token"]},
+        )
+        assert profile.status_code == 200
+        assert profile.json()["username"] == username
+
+    assert client.get("/api/auth/demo-credentials").json() == response.json()
+
+
+def test_demo_bootstrap_requires_a_configured_role_password(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(config, "DEMO_MODE", True)
+    monkeypatch.setattr(config, "DEMO_ROLE_PASSWORD", None)
+    with SessionLocal() as db, pytest.raises(RuntimeError, match="DEMO_ROLE_PASSWORD"):
+        bootstrap_users(db)
 
 
 def test_complete_intake_review_and_audit_flow(client: TestClient, auth_headers: dict[str, str]):

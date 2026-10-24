@@ -64,10 +64,16 @@ async def lifespan(_: FastAPI):
         missing_settings = []
         if not config.SECRET_KEY_CONFIGURED:
             missing_settings.append("SECRET_KEY")
-        if not config.ADMIN_PASSWORD:
-            missing_settings.append("ADMIN_PASSWORD")
         if config.DEMO_MODE:
-            missing_settings.append("DEMO_MODE=false")
+            if not config.DEMO_ROLE_PASSWORD:
+                missing_settings.append("DEMO_ROLE_PASSWORD")
+            if config.DEMO_ACCESS_PROTECTION != "vercel_sso":
+                missing_settings.append("DEMO_ACCESS_PROTECTION=vercel_sso")
+        else:
+            if not config.ADMIN_PASSWORD:
+                missing_settings.append("ADMIN_PASSWORD")
+            if config.DEMO_ACCESS_PROTECTION:
+                missing_settings.append("DEMO_ACCESS_PROTECTION must be empty for production")
         if not config.DATABASE_URL.startswith(("postgres://", "postgresql://", "postgresql+")):
             missing_settings.append("DATABASE_URL")
         if config.DOCUMENT_STORAGE != "vercel_blob":

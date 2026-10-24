@@ -261,7 +261,22 @@ Optional bootstrap role passwords are `OFFICER_PASSWORD`,
 `REGULATORY_PASSWORD`, `COMPLIANCE_ADMIN_PASSWORD`, and
 `INSTITUTION_PASSWORD`. If omitted, the accounts receive random passwords that
 are not printed in Vercel logs; the administrator can set passwords from the
-user-management dashboard. Do not enable demo mode in a hosted environment.
+user-management dashboard. Do not enable demo mode in the public production
+project.
+
+### Protected demo deployment
+
+If shared demo accounts are needed, use a separate Vercel project with its own
+PostgreSQL database and private Blob store. Enable Vercel SSO deployment
+protection for the entire demo project and limit access to authorized team
+members before enabling demo mode. Configure `DEMO_MODE=true`,
+`DEMO_ACCESS_PROTECTION=vercel_sso`, and the secret `DEMO_ROLE_PASSWORD` only
+in that protected project. The backend resets the five seeded role accounts to
+that shared password on startup, and the demo login page displays it only when
+the protected backend enables the demo-credentials endpoint. The public
+production project must keep `DEMO_MODE=false`; its demo-credentials endpoint
+returns no passwords. Never reuse the demo database or storage for production
+records.
 
 The project uses the backend Dockerfile so scanned-PDF OCR keeps its Tesseract
 runtime. A Vercel-managed `*.vercel.app` domain is assigned to the project;

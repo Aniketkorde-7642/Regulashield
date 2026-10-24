@@ -9,9 +9,9 @@ from app.models import User
 from app.schemas import InstitutionRegistration, LoginRequest, TokenResponse
 from app.services.audit import append_audit
 from app.services.security import (
-    DEMO_ROLE_PASSWORDS,
     authenticate_user,
     create_access_token,
+    demo_role_passwords,
     get_current_user,
     hash_password,
     verify_password,
@@ -22,19 +22,20 @@ router = APIRouter(prefix="/auth", tags=["authentication"])
 
 @router.get("/demo-credentials", response_model=dict[str, str])
 def demo_credentials(db: Session = Depends(get_db)) -> dict[str, str]:
-    if not config.DEMO_MODE:
+    credentials = demo_role_passwords()
+    if not config.DEMO_MODE or not credentials:
         return {}
 
     users = db.scalars(
         select(User).where(
-            User.username.in_(DEMO_ROLE_PASSWORDS),
+            User.username.in_(credentials),
             User.is_active.is_(True),
         )
     )
     return {
-        user.username: DEMO_ROLE_PASSWORDS[user.username]
+        user.username: credentials[user.username]
         for user in users
-        if verify_password(DEMO_ROLE_PASSWORDS[user.username], user.password_hash)
+        if verify_password(credentials[user.username], user.password_hash)
     }
 
 

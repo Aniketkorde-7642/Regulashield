@@ -30,13 +30,13 @@ ROLE_ALIASES = {
     "regulatory_compliance_administrator": "compliance_admin",
     "compliance_administrator": "compliance_admin",
 }
-DEMO_ROLE_PASSWORDS = {
-    "admin": "DemoAdmin!2026",
-    "officer": "DemoOfficer!2026",
-    "regulatory": "DemoRegulatory!2026",
-    "compliance": "DemoCompliance!2026",
-    "institution": "DemoInstitution!2026",
-}
+DEMO_ROLE_USERNAMES = ("admin", "officer", "regulatory", "compliance", "institution")
+
+
+def demo_role_passwords() -> dict[str, str]:
+    if not config.DEMO_MODE or not config.DEMO_ROLE_PASSWORD:
+        return {}
+    return {username: config.DEMO_ROLE_PASSWORD for username in DEMO_ROLE_USERNAMES}
 
 
 def canonical_role(role: str) -> str:
@@ -77,6 +77,9 @@ def verify_password(password: str, stored_hash: str) -> bool:
 
 
 def bootstrap_users(db: Session) -> None:
+    if config.DEMO_MODE and not config.DEMO_ROLE_PASSWORD:
+        raise RuntimeError("DEMO_ROLE_PASSWORD must be configured when DEMO_MODE is enabled.")
+
     seeds = (
         ("admin", "System Administrator", "admin", config.ADMIN_PASSWORD),
         ("officer", "AICTE Scrutiny Officer", "officer", config.OFFICER_PASSWORD),
@@ -99,12 +102,15 @@ def bootstrap_users(db: Session) -> None:
             config.COMPLIANCE_ADMIN_PASSWORD,
         ),
     )
+    demo_passwords = demo_role_passwords()
     for username, display_name, role, configured_password in seeds:
         existing = db.scalar(select(User).where(User.username == username))
         if existing:
+            if username in demo_passwords:
+                existing.password_hash = hash_password(demo_passwords[username])
             continue
         password = (
-            DEMO_ROLE_PASSWORDS[username]
+            demo_passwords[username]
             if config.DEMO_MODE
             else configured_password or secrets.token_urlsafe(15)
         )

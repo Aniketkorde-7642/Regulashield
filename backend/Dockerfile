@@ -13,6 +13,8 @@ RUN apt-get update \
     && pip install -r requirements.txt
 
 COPY app ./app
+COPY scripts ./scripts
+RUN tesseract --version && PYTHONPATH=/app python scripts/verify_ocr_runtime.py
 EXPOSE 8000
 
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

@@ -873,6 +873,13 @@ def test_failed_ocr_can_be_retried_after_engine_is_fixed(
     failed_document = failed_review["application"]["documents"][0]
     assert failed_document["status"] == "failed"
     assert "Install Tesseract OCR" in failed_document["processing_error"]
+    ocr_finding = next(
+        finding
+        for finding in failed_review["findings"]
+        if finding["rule_id"] == "extraction.ocr_unavailable"
+    )
+    assert ocr_finding["severity"] == "high"
+    assert "manual review" in ocr_finding["message"]
     assert failed_review["application"]["status"] == "review_required"
 
     original_get_text = Page.get_text
@@ -903,6 +910,10 @@ def test_failed_ocr_can_be_retried_after_engine_is_fixed(
     ).json()
     fields = {field["field_name"]: field for field in completed_review["extractions"]}
     assert fields["institution_name"]["extracted_value"] == "Retry Test College"
+    assert not any(
+        finding["rule_id"] == "extraction.ocr_unavailable"
+        for finding in completed_review["findings"]
+    )
 
 
 @pytest.mark.skipif(shutil.which("tesseract") is None, reason="Tesseract is not installed")

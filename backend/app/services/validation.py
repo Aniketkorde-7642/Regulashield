@@ -23,6 +23,10 @@ _OPERATORS = {
 }
 
 
+class OcrProcessingError(RuntimeError):
+    pass
+
+
 @dataclass(frozen=True)
 class PdfTextExtraction:
     raw_text: str
@@ -91,8 +95,8 @@ def extract_pdf_document(pdf_bytes: bytes) -> PdfTextExtraction:
                         full=False,
                         tessdata=config.TESSDATA_PATH,
                     )
-                except RuntimeError as exc:
-                    raise RuntimeError(
+                except Exception as exc:
+                    raise OcrProcessingError(
                         f"OCR failed for language {config.OCR_LANGUAGE!r}. "
                         "Install Tesseract OCR and verify that the matching "
                         f"language data are available. Engine error: {exc}"

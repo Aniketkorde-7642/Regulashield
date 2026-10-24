@@ -16,6 +16,7 @@ from app.services.extraction import (
 )
 from app.services.storage import read_document_bytes
 from app.services.validation import (
+    OcrProcessingError,
     cross_document_findings,
     extract_pdf_document,
     issuer_finding,
@@ -143,6 +144,13 @@ def process_document(document_id: str) -> None:
                 Finding.status == "open",
             )
         )
+        db.execute(
+            delete(Finding).where(
+                Finding.document_id == document.id,
+                Finding.rule_id == "extraction.ocr_unavailable",
+                Finding.status == "open",
+            )
+        )
         db.flush()
         if extraction.unreadable_scanned_pages:
             _save_findings(
@@ -253,6 +261,36 @@ def process_document(document_id: str) -> None:
             failed_application = db.get(Application, failed_document.application_id)
             if failed_application and failed_application.status not in {"approved", "rejected"}:
                 failed_application.status = "review_required"
+            if failed_application and isinstance(exc, OcrProcessingError):
+                db.execute(
+                    delete(Finding).where(
+                        Finding.document_id == failed_document.id,
+                        Finding.rule_id == "extraction.ocr_unavailable",
+                        Finding.status == "open",
+                    )
+                )
+                _save_findings(
+                    db,
+                    failed_application.id,
+                    [
+                        {
+                            "rule_id": "extraction.ocr_unavailable",
+                            "category": "extraction",
+                            "severity": "high",
+                            "message": (
+                                "OCR could not process this scanned PDF in the "
+                                "current environment. It requires manual review."
+                            ),
+                            "expected": (
+                                "Tesseract OCR and the selected language data "
+                                "are available."
+                            ),
+                            "actual": str(exc),
+                            "details": {"document_id": failed_document.id},
+                        }
+                    ],
+                    document_id=failed_document.id,
+                )
             append_audit(
                 db,
                 actor="system",

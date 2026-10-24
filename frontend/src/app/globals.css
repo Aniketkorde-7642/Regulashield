@@ -246,6 +246,7 @@ h1, h2, h3, p { margin-top: 0; }
 .finding-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
 .button.compact { min-height: 30px; padding: 0 9px; font-size: 9px; }
 .decision-body { display: grid; gap: 11px; }
+.field-review-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .compliance-score { display: grid; gap: 4px; padding: 12px; background: #f8f9fc; border-radius: 8px; }
 .compliance-score strong { color: var(--brand-dark); font-size: 26px; }
 .compliance-score span, .compliance-categories span, .compliance-field-list small { color: var(--muted); font-size: 11px; }

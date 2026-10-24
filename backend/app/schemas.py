@@ -25,6 +25,34 @@ class InstitutionRegistration(BaseModel):
         return value
 
 
+class InstitutionRegistrationOut(BaseModel):
+    status: str
+    message: str
+
+
+class InstitutionAccountRequestOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    username: str
+    display_name: str
+    status: str
+    created_at: datetime
+
+
+class InstitutionAccountRequestDecision(BaseModel):
+    decision: str = Field(pattern=r"^(approve|reject)$")
+    note: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def require_rejection_note(self) -> InstitutionAccountRequestDecision:
+        if self.note is not None:
+            self.note = self.note.strip()
+        if self.decision == "reject" and not self.note:
+            raise ValueError("A reason is required when rejecting an account request.")
+        return self
+
+
 class UserCreate(BaseModel):
     username: str = Field(min_length=3, max_length=80, pattern=r"^[A-Za-z0-9_.-]+$")
     display_name: str = Field(min_length=2, max_length=160)
@@ -306,7 +334,7 @@ class ApplicationDecisionReport(BaseModel):
 
 
 class FieldReviewRequest(BaseModel):
-    action: str = Field(pattern=r"^(confirm|correct|flag)$")
+    action: str = Field(pattern=r"^(confirm|correct|absent|flag)$")
     corrected_value: str | None = Field(default=None, max_length=2000)
 
 

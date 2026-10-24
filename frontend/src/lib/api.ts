@@ -13,6 +13,8 @@ import type {
   DocumentRecord,
   FieldExtraction,
   Finding,
+  InstitutionAccountRequest,
+  InstitutionRegistrationResponse,
   ManagedUser,
   ReviewQueueItem,
   RuleChange,
@@ -72,10 +74,24 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
   registerInstitution: (username: string, displayName: string, password: string) =>
-    request<{ access_token: string; token_type: string; user: User }>("/auth/register/institution", {
+    request<InstitutionRegistrationResponse>("/auth/register/institution", {
       method: "POST",
       body: JSON.stringify({ username, display_name: displayName, password }),
     }),
+  institutionAccountRequests: () =>
+    request<InstitutionAccountRequest[]>("/auth/institution-requests"),
+  decideInstitutionAccountRequest: (
+    requestId: string,
+    decision: "approve" | "reject",
+    note?: string,
+  ) =>
+    request<InstitutionAccountRequest>(
+      `/auth/institution-requests/${encodeURIComponent(requestId)}/decision`,
+      {
+        method: "POST",
+        body: JSON.stringify({ decision, note: note ?? null }),
+      },
+    ),
   me: () => request<User>("/auth/me"),
   dashboard: () => request<DashboardStats>("/dashboard"),
   securityOverview: () => request<SecurityOverview>("/security/overview"),
@@ -269,7 +285,7 @@ export const api = {
       `/applications/${encodeURIComponent(applicationId)}/documents/${encodeURIComponent(documentId)}/retry`,
       { method: "POST" },
     ),
-  reviewField: (extractionId: string, action: "confirm" | "correct" | "flag", correctedValue?: string) =>
+  reviewField: (extractionId: string, action: "confirm" | "correct" | "absent" | "flag", correctedValue?: string) =>
     request<FieldExtraction>(`/extractions/${encodeURIComponent(extractionId)}/review`, {
       method: "POST",
       body: JSON.stringify({ action, corrected_value: correctedValue ?? null }),

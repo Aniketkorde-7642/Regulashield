@@ -8,7 +8,7 @@ interface AuthContextValue {
   user: User | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
-  registerInstitution: (username: string, displayName: string, password: string) => Promise<void>;
+  registerInstitution: (username: string, displayName: string, password: string) => Promise<string>;
   logout: () => void;
 }
 
@@ -35,8 +35,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     password: string,
   ) => {
     const result = await api.registerInstitution(username, displayName, password);
-    window.localStorage.setItem(TOKEN_KEY, result.access_token);
-    setUser(result.user);
+    return result.message;
   }, []);
 
   useEffect(() => {

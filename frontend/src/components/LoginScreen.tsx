@@ -24,6 +24,7 @@ export function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [registrationMessage, setRegistrationMessage] = useState<string | null>(null);
   const [demoPasswords, setDemoPasswords] = useState<DemoCredentials>({});
   const [demoCredentialsError, setDemoCredentialsError] = useState<string | null>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
@@ -79,8 +80,11 @@ export function LoginScreen() {
     if (registering) {
       setBusy(true);
       setError(null);
+      setRegistrationMessage(null);
       try {
-        await registerInstitution(submittedUsername, displayName, submittedPassword);
+        setRegistrationMessage(
+          await registerInstitution(submittedUsername, displayName, submittedPassword),
+        );
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : "Institution account could not be created.");
       } finally {
@@ -104,6 +108,7 @@ export function LoginScreen() {
           <h1>{registering ? "Create your account" : "Sign in to RegulaShield"}</h1>
           <p>{registering ? "Create an individual Institution Applicant account." : "Choose your role to fill in your username, then sign in with your personal password."}</p>
         </div>
+        {registrationMessage && <div className="notice" role="status">{registrationMessage}</div>}
         {!registering && <div className="login-role-section">
           <div className="login-role-heading"><strong>Select your role</strong><span>Individual account access</span></div>
           <div className="login-roles" aria-label="Choose your role">
@@ -124,7 +129,7 @@ export function LoginScreen() {
           ))}
           </div>
         </div>}
-        <form onSubmit={submit} className="login-form">
+        {!registrationMessage && <form onSubmit={submit} className="login-form">
           {registering && <>
             <label htmlFor="display-name">Institution / applicant name</label>
             <input id="display-name" name="display_name" autoComplete="organization" value={displayName} onChange={(event) => setDisplayName(event.target.value)} minLength={2} maxLength={160} required />
@@ -146,15 +151,15 @@ export function LoginScreen() {
             <input key={registering ? "registration-password" : "login-password"} ref={passwordInputRef} id="password" name="password" type={showPassword ? "text" : "password"} autoComplete={registering ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.currentTarget.value)} onInput={(event) => setPassword(event.currentTarget.value)} onBlur={(event) => setPassword(event.currentTarget.value)} minLength={registering ? 12 : undefined} maxLength={256} required />
             <button type="button" aria-label={showPassword ? "Hide password" : "Show password"} title={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}<span>{showPassword ? "Hide" : "Show"}</span></button>
           </div>
-          {registering && <small>Use at least 12 characters. New accounts are created with the Institution Applicant role.</small>}
+          {registering && <small>Use at least 12 characters. Your request will be reviewed by a System Administrator before an account is created.</small>}
           {!registering && <small className="login-password-note">{Object.keys(demoPasswords).length > 0 ? "Demo credentials are shown only on the protected demo deployment." : "Passwords are private and are not shared on this sign-in page. Contact the System Administrator to create or reset a staff account."}</small>}
           {!registering && demoCredentialsError && <small className="login-password-note" role="status">{demoCredentialsError}</small>}
           {error && <div className="alert alert-error" role="alert">{error}</div>}
-          <button className="button button-primary login-submit" type="submit" disabled={busy}>{busy ? (registering ? "Creating account…" : "Signing in…") : registering ? "Create Institution Applicant account" : <>Login <ArrowRight size={17} /></>}</button>
-        </form>
-        {registering && <div className="login-help"><span className="status-dot" />Create an institution account to submit applications for System Administrator review.</div>}
-        <button className="text-button login-mode-toggle" type="button" disabled={busy} onClick={() => { setRegistering((current) => !current); setPassword(""); setError(null); }}>
-          {registering ? "Already have an account? Sign in" : "New Institution Applicant? Create an account"}
+          <button className="button button-primary login-submit" type="submit" disabled={busy}>{busy ? (registering ? "Submitting request…" : "Signing in…") : registering ? "Request Institution Applicant account" : <>Login <ArrowRight size={17} /></>}</button>
+        </form>}
+        {registering && !registrationMessage && <div className="login-help"><span className="status-dot" />An administrator must approve the request before you can sign in.</div>}
+        <button className="text-button login-mode-toggle" type="button" disabled={busy} onClick={() => { setRegistering((current) => !current); setPassword(""); setError(null); setRegistrationMessage(null); }}>
+          {registering ? "Already have an account? Sign in" : "New Institution Applicant? Request an account"}
         </button>
       </section>
     </main>

@@ -27,6 +27,7 @@ import type {
   CreateUserPayload,
   DashboardStats,
   Finding,
+  InstitutionAccountRequest,
   ManagedUser,
   ApplicationPreflight,
   SecurityOverview,
@@ -46,12 +47,45 @@ const EMPTY_STATS: DashboardStats = {
 
 export function RoleDashboard({ role }: { role: string }) {
   if (["admin", "administrator", "system_administrator"].includes(role)) return <AdminDashboard />;
+  if (["officer", "aicte_scrutiny_officer", "scrutiny_officer"].includes(role)) return <ScrutinyOfficerDashboard />;
   if (["compliance_admin", "compliance_administrator", "regulatory_compliance_administrator"].includes(role)) return <ComplianceAdminDashboard />;
   if (role === "regulatory_officer" || role === "regulatory" || role === "verification_officer") {
     return <RegulatoryDashboard />;
   }
   if (role === "institution" || role === "institution_login") return <InstitutionDashboard />;
   return <AccessNotice role={role} />;
+}
+
+function ScrutinyOfficerDashboard() {
+  const { stats, applications, loading, busy, error, refresh } = useDashboardData();
+  const reviewableApplications = applications.filter(
+    (application) => !["approved", "rejected"].includes(application.status),
+  );
+
+  return (
+    <>
+      <DashboardHeader
+        eyebrow="AICTE SCRUTINY"
+        title="Application review queue"
+        description="Review extracted evidence, confirm text, mark absent fields, flag follow-ups, and record decisions for applications assigned to officer review."
+        actions={<button className="button button-secondary" onClick={refresh} disabled={busy}><RefreshCw size={15} className={busy ? "spin" : ""} /> Refresh</button>}
+      />
+      <DashboardError error={error} />
+      <MetricCards stats={stats} />
+      <section className="panel">
+        <div className="panel-heading"><div><h3>Applications awaiting review</h3><p>Institution applications are reviewed here but require a System Administrator for the final decision.</p></div><span className="record-count">{reviewableApplications.length} open</span></div>
+        {loading && <div className="table-state"><span className="spinner" /> Loading applications…</div>}
+        {!loading && reviewableApplications.length === 0 && <div className="section-empty"><Check size={20} /><strong>No applications awaiting review</strong><span>New submissions will appear here.</span></div>}
+        <div className="finding-list">{reviewableApplications.map((application) => (
+          <article className="institution-application" key={application.id}>
+            <div className="institution-application-head"><div><strong>{application.institution_name}</strong><span className="mono">{application.application_number} · {application.academic_year}</span></div><StatusBadge status={application.status} /></div>
+            <div className="institution-application-meta"><span>{application.document_count} supporting file(s)</span><span>Updated {formatDate(application.updated_at)}</span></div>
+            <Link className="table-link" href={`/applications/${application.id}`}>Review extracted fields and evidence <ArrowRight size={14} /></Link>
+          </article>
+        ))}</div>
+      </section>
+    </>
+  );
 }
 
 function DashboardHeader({
@@ -125,6 +159,7 @@ function DashboardError({ error }: { error: string | null }) {
 function AdminDashboard() {
   const { stats, applications, loading, busy, error, refresh } = useDashboardData();
   const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [institutionRequests, setInstitutionRequests] = useState<InstitutionAccountRequest[]>([]);
   const [usersError, setUsersError] = useState<string | null>(null);
   const [security, setSecurity] = useState<SecurityOverview | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -140,6 +175,14 @@ function AdminDashboard() {
       setUsersError(reason instanceof Error ? reason.message : "Unable to load users.");
     }
   }, []);
+  const loadInstitutionRequests = useCallback(async () => {
+    setUsersError(null);
+    try {
+      setInstitutionRequests(await api.institutionAccountRequests());
+    } catch (reason) {
+      setUsersError(reason instanceof Error ? reason.message : "Unable to load institution account requests.");
+    }
+  }, []);
   const loadSecurity = useCallback(async () => {
     try {
       setSecurity(await api.securityOverview());
@@ -147,7 +190,40 @@ function AdminDashboard() {
       setUsersError(reason instanceof Error ? reason.message : "Unable to load security monitoring.");
     }
   }, []);
-  useEffect(() => { void loadUsers(); void loadSecurity(); }, [loadUsers, loadSecurity]);
+  useEffect(() => {
+    void loadUsers();
+    void loadInstitutionRequests();
+    void loadSecurity();
+  }, [loadUsers, loadInstitutionRequests, loadSecurity]);
+
+  async function decideInstitutionRequest(
+    accountRequest: InstitutionAccountRequest,
+    decision: "approve" | "reject",
+  ) {
+    let note: string | undefined;
+    if (decision === "reject") {
+      const enteredNote = window.prompt("Why are you rejecting this account request?");
+      if (enteredNote === null) return;
+      note = enteredNote.trim();
+      if (!note) {
+        setUsersError("Enter a reason to reject this account request.");
+        return;
+      }
+    }
+    setSavingId(accountRequest.id);
+    setUsersError(null);
+    try {
+      await api.decideInstitutionAccountRequest(accountRequest.id, decision, note);
+      await Promise.all([loadUsers(), loadInstitutionRequests()]);
+      if (decision === "approve") {
+        refresh();
+      }
+    } catch (reason) {
+      setUsersError(reason instanceof Error ? reason.message : "Unable to review the account request.");
+    } finally {
+      setSavingId(null);
+    }
+  }
 
   async function toggleUser(user: ManagedUser) {
     setSavingId(user.id);
@@ -195,7 +271,7 @@ function AdminDashboard() {
         eyebrow="SYSTEM ADMINISTRATION"
         title="User and system dashboard"
         description="Manage role-based accounts and monitor the review environment."
-        actions={<button className="button button-secondary" onClick={refresh} disabled={busy}><RefreshCw size={15} className={busy ? "spin" : ""} /> Refresh</button>}
+        actions={<button className="button button-secondary" onClick={() => { refresh(); void loadInstitutionRequests(); }} disabled={busy}><RefreshCw size={15} className={busy ? "spin" : ""} /> Refresh</button>}
       />
       <DashboardError error={error} />
       <MetricCards stats={stats} admin />
@@ -211,6 +287,24 @@ function AdminDashboard() {
             <Link className="table-link" href={`/applications/${application.id}`}>Review and decide <ArrowRight size={14} /></Link>
           </article>
         ))}</div>
+      </section>
+      <section className="panel">
+        <div className="panel-heading"><div><h3>Institution account requests</h3><p>New institution accounts cannot sign in until approved here.</p></div><span className="record-count">{institutionRequests.length} pending</span></div>
+        <DashboardError error={usersError} />
+        {institutionRequests.length === 0
+          ? <div className="section-empty"><Check size={20} /><strong>No institution account requests awaiting approval</strong></div>
+          : <div className="table-scroll"><table className="data-table">
+            <thead><tr><th>Institution / applicant</th><th>Requested username</th><th>Requested</th><th>Review</th></tr></thead>
+            <tbody>{institutionRequests.map((accountRequest) => <tr key={accountRequest.id}>
+              <td><strong>{accountRequest.display_name}</strong></td>
+              <td className="mono">{accountRequest.username}</td>
+              <td>{formatDate(accountRequest.created_at)}</td>
+              <td className="user-actions">
+                <button className="button button-primary compact" disabled={savingId === accountRequest.id} onClick={() => void decideInstitutionRequest(accountRequest, "approve")}>{savingId === accountRequest.id ? "Saving…" : "Approve account"}</button>
+                <button className="button button-secondary compact" disabled={savingId === accountRequest.id} onClick={() => void decideInstitutionRequest(accountRequest, "reject")}>Reject</button>
+              </td>
+            </tr>)}</tbody>
+          </table></div>}
       </section>
       {security && <section className="panel security-overview">
         <div className="panel-heading"><div><h3>Security and audit monitoring</h3><p>Account status and integrity of the hash-linked audit history.</p></div><Link className="table-link" href="/audit">Open audit trail <ArrowRight size={14} /></Link></div>

@@ -12,6 +12,19 @@ export interface ManagedUser extends User {
   created_at: string;
 }
 
+export interface InstitutionAccountRequest {
+  id: string;
+  username: string;
+  display_name: string;
+  status: "pending" | "approved" | "rejected";
+  created_at: string;
+}
+
+export interface InstitutionRegistrationResponse {
+  status: "pending";
+  message: string;
+}
+
 export interface CreateUserPayload {
   username: string;
   display_name: string;
@@ -181,7 +194,7 @@ export interface FieldExtraction {
   raw_ocr_text: string | null;
   requires_review: boolean;
   reviewed_value: string | null;
-  review_action: "confirm" | "correct" | "flag" | null;
+  review_action: "confirm" | "correct" | "absent" | "flag" | null;
   source_page: number | null;
 }
 

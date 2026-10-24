@@ -297,6 +297,73 @@ def test_complete_intake_review_and_audit_flow(client: TestClient, auth_headers:
     assert any(item["action"] == "application.approved" for item in audit.json()["entries"])
 
 
+def test_scrutiny_officer_can_confirm_mark_absent_flag_and_decide(
+    client: TestClient, auth_headers: dict[str, str]
+):
+    officer_headers = login_headers(client, "officer", "test-officer-password")
+    application = create_application(client, auth_headers)
+    upload = client.post(
+        f"/api/applications/{application['id']}/documents",
+        headers=auth_headers,
+        data={"document_type": "affiliation_letter"},
+        files={
+            "file": (
+                "officer-review.pdf",
+                make_pdf(
+                    "Institution Name: North Valley College\n"
+                    "Faculty Count: 24\n"
+                    "Academic Year: 2026-27\n"
+                ),
+                "application/pdf",
+            )
+        },
+    )
+    assert upload.status_code == 202, upload.text
+
+    review = client.get(
+        f"/api/applications/{application['id']}/review",
+        headers=officer_headers,
+    )
+    assert review.status_code == 200, review.text
+    assert review.json()["extractions"]
+    fields = {field["field_name"]: field for field in review.json()["extractions"]}
+    assert fields["institution_name"]["raw_ocr_text"] == "Institution Name: North Valley College"
+
+    confirmed = client.post(
+        f"/api/extractions/{fields['institution_name']['id']}/review",
+        headers=officer_headers,
+        json={"action": "confirm"},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["reviewed_value"] == "North Valley College"
+
+    absent = client.post(
+        f"/api/extractions/{fields['student_count']['id']}/review",
+        headers=officer_headers,
+        json={"action": "absent"},
+    )
+    assert absent.status_code == 200, absent.text
+    assert absent.json()["review_action"] == "absent"
+    assert absent.json()["requires_review"] is False
+
+    flagged = client.post(
+        f"/api/extractions/{fields['faculty_count']['id']}/review",
+        headers=officer_headers,
+        json={"action": "flag"},
+    )
+    assert flagged.status_code == 200, flagged.text
+    assert flagged.json()["review_action"] == "flag"
+    assert flagged.json()["requires_review"] is True
+
+    decision = client.post(
+        f"/api/applications/{application['id']}/decision",
+        headers=officer_headers,
+        json={"decision": "reject", "note": "Evidence needs correction."},
+    )
+    assert decision.status_code == 200, decision.text
+    assert decision.json()["status"] == "rejected"
+
+
 def test_officer_rejection_sets_final_application_status(
     client: TestClient, auth_headers: dict[str, str]
 ):
@@ -960,7 +1027,9 @@ def test_admin_user_management_and_role_permissions(client: TestClient):
     assert self_deactivation.status_code == 409
 
 
-def test_institution_registration_creates_only_institution_role(client: TestClient):
+def test_institution_registration_waits_for_admin_approval(client: TestClient):
+    admin_headers = login_headers(client, "admin", "test-admin-password")
+    officer_headers = login_headers(client, "officer", "test-officer-password")
     response = client.post(
         "/api/auth/register/institution",
         json={
@@ -970,13 +1039,84 @@ def test_institution_registration_creates_only_institution_role(client: TestClie
             "role": "admin",
         },
     )
-    assert response.status_code == 201, response.text
-    assert response.json()["user"]["role"] == "institution"
-    assert response.json()["user"]["username"] == "new-public-institution"
+    assert response.status_code == 202, response.text
+    assert response.json()["status"] == "pending"
+    assert "administrator" in response.json()["message"].lower()
+    assert client.post(
+        "/api/auth/login",
+        json={
+            "username": "new-public-institution",
+            "password": "a-long-public-password",
+        },
+    ).status_code == 401
     assert client.get(
-        "/api/auth/me",
-        headers={"Authorization": f"Bearer {response.json()['access_token']}"},
-    ).json()["role"] == "institution"
+        "/api/auth/institution-requests",
+        headers=officer_headers,
+    ).status_code == 403
+    requests = client.get(
+        "/api/auth/institution-requests",
+        headers=admin_headers,
+    )
+    assert requests.status_code == 200, requests.text
+    account_request = next(
+        item for item in requests.json()
+        if item["username"] == "new-public-institution"
+    )
+    assert "password_hash" not in account_request
+    approved = client.post(
+        f"/api/auth/institution-requests/{account_request['id']}/decision",
+        headers=admin_headers,
+        json={"decision": "approve"},
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "approved"
+    account_headers = login_headers(
+        client,
+        "new-public-institution",
+        "a-long-public-password",
+    )
+    assert client.get("/api/auth/me", headers=account_headers).json()["role"] == "institution"
+    assert any(
+        user["username"] == "new-public-institution"
+        for user in client.get("/api/users", headers=admin_headers).json()
+    )
+    rejected_request = client.post(
+        "/api/auth/register/institution",
+        json={
+            "username": "rejected-institution-request",
+            "display_name": "Rejected Institution",
+            "password": "another-long-public-password",
+        },
+    )
+    assert rejected_request.status_code == 202, rejected_request.text
+    pending_rejected = next(
+        item
+        for item in client.get(
+            "/api/auth/institution-requests",
+            headers=admin_headers,
+        ).json()
+        if item["username"] == "rejected-institution-request"
+    )
+    missing_rejection_reason = client.post(
+        f"/api/auth/institution-requests/{pending_rejected['id']}/decision",
+        headers=admin_headers,
+        json={"decision": "reject"},
+    )
+    assert missing_rejection_reason.status_code == 422
+    rejected = client.post(
+        f"/api/auth/institution-requests/{pending_rejected['id']}/decision",
+        headers=admin_headers,
+        json={"decision": "reject", "note": "Could not verify applicant details."},
+    )
+    assert rejected.status_code == 200, rejected.text
+    assert rejected.json()["status"] == "rejected"
+    assert client.post(
+        "/api/auth/login",
+        json={
+            "username": "rejected-institution-request",
+            "password": "another-long-public-password",
+        },
+    ).status_code == 401
     assert client.post(
         "/api/auth/register/institution",
         json={
@@ -1116,9 +1256,26 @@ def test_institution_submission_requires_admin_decision_and_generates_report(
             "password": "another-long-password",
         },
     )
-    other_headers = {
-        "Authorization": f"Bearer {other_account.json()['access_token']}"
-    }
+    assert other_account.status_code == 202, other_account.text
+    other_request = next(
+        item
+        for item in client.get(
+            "/api/auth/institution-requests",
+            headers=admin_headers,
+        ).json()
+        if item["username"] == "other-report-institution"
+    )
+    other_approved = client.post(
+        f"/api/auth/institution-requests/{other_request['id']}/decision",
+        headers=admin_headers,
+        json={"decision": "approve"},
+    )
+    assert other_approved.status_code == 200, other_approved.text
+    other_headers = login_headers(
+        client,
+        "other-report-institution",
+        "another-long-password",
+    )
     assert client.get(
         f"/api/applications/{application_id}/decision-report", headers=other_headers
     ).status_code == 404

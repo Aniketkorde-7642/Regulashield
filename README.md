@@ -44,9 +44,11 @@ and only for active accounts that still have those seeded passwords. Do not
 enable demo mode in production; existing accounts are never overwritten.
 Administrators can create accounts, change roles, and disable or enable users
 from the System Administrator dashboard.
-The sign-in screen also lets institutions register directly. Public registration
-always assigns the least-privilege Institution Applicant role and requires a
-12-character password; applicants can access only their own applications.
+The sign-in screen lets institutions request an account using a 12-character
+password. A request appears in the System Administrator dashboard; no login
+account is created until an administrator approves it. Approved accounts
+receive only the Institution Applicant role and can access only their own
+applications.
 
 The administrator dashboard manages accounts and shows audit integrity and
 security status. The AICTE Scrutiny Officer dashboard prioritizes applications

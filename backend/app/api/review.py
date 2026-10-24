@@ -208,6 +208,9 @@ def review_extraction(
     elif payload.action == "confirm":
         extraction.reviewed_value = extraction.extracted_value
         extraction.requires_review = False
+    elif payload.action == "absent":
+        extraction.reviewed_value = None
+        extraction.requires_review = False
     else:
         extraction.reviewed_value = (payload.corrected_value or "").strip() or None
         extraction.requires_review = True

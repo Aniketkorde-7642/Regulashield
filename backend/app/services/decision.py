@@ -54,6 +54,8 @@ def approval_blockers(db: Session, application_id: str) -> list[str]:
             .where(
                 Document.application_id == application_id,
                 FieldExtraction.field_name.in_(required_fields),
+                (FieldExtraction.review_action.is_(None))
+                | (FieldExtraction.review_action != "absent"),
                 FieldExtraction.reviewed_value.is_not(None)
                 | FieldExtraction.extracted_value.is_not(None),
             )

@@ -363,8 +363,12 @@ def overall_metadata_match_score(
     for field_name in METADATA_MATCH_FIELDS:
         expected_value = expected_application_value(field_name, application)
         candidates = [
-            getattr(extraction, "reviewed_value", None)
-            or getattr(extraction, "extracted_value", None)
+            (
+                None
+                if getattr(extraction, "review_action", None) == "absent"
+                else getattr(extraction, "reviewed_value", None)
+                or getattr(extraction, "extracted_value", None)
+            )
             for extraction in extractions
             if getattr(extraction, "field_name", None) == field_name
         ]

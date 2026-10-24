@@ -125,6 +125,7 @@ export function ApplicationReviewPage() {
           />
           <FieldsSection
             fields={review.extractions}
+            documents={application.documents}
             canReview={canReview}
             onChanged={() => void load(true)}
           />
@@ -262,17 +263,19 @@ function DocumentSection({
 
 function FieldsSection({
   fields,
+  documents,
   canReview,
   onChanged,
 }: {
   fields: FieldExtraction[];
+  documents: ApplicationReview["application"]["documents"];
   canReview: boolean;
   onChanged: () => void;
 }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function review(field: FieldExtraction, action: "confirm" | "correct" | "flag", value?: string) {
+  async function review(field: FieldExtraction, action: "confirm" | "correct" | "absent" | "flag", value?: string) {
     setBusyId(field.id);
     setError(null);
     try {
@@ -285,17 +288,18 @@ function FieldsSection({
     }
   }
 
+  const unprocessedDocuments = documents.filter((document) => document.status !== "processed");
   return <section className="panel">
-    <div className="panel-heading"><div><h3>Extracted fields</h3><p>{canReview ? "Confirm, correct, or flag candidates before making a decision." : "Review the fields extracted from your supporting documents."}</p></div><span className="record-count">{fields.filter((field) => field.requires_review).length} need review</span></div>
+    <div className="panel-heading"><div><h3>Extracted fields</h3><p>{canReview ? "Check the source text, then confirm it, correct it, mark it absent, or flag it for follow-up." : "Review the fields extracted from your supporting documents."}</p></div><span className="record-count">{fields.filter((field) => field.requires_review).length} need review</span></div>
     {error && <div className="inline-error"><AlertCircle size={15} />{error}</div>}
     <div className="field-list">
       {fields.map((field) => <FieldRow key={field.id} field={field} canReview={canReview} busy={busyId === field.id} onReview={review} />)}
-      {fields.length === 0 && <div className="section-empty"><FileCheck2Icon /><strong>No extracted fields yet</strong><span>Fields appear after a PDF finishes processing.</span></div>}
+      {fields.length === 0 && <div className="section-empty"><FileCheck2Icon /><strong>No extracted fields yet</strong><span>{unprocessedDocuments.length > 0 ? "Check document processing status above. Failed or unreadable PDFs must be retried before extracted text can be reviewed." : documents.length === 0 ? "Upload a supporting PDF to begin text extraction and review." : "No extraction results were saved. Ask an administrator or scrutiny officer to reprocess the supporting PDF."}</span></div>}
     </div>
   </section>;
 }
 
-function FieldRow({ field, canReview, busy, onReview }: { field: FieldExtraction; canReview: boolean; busy: boolean; onReview: (field: FieldExtraction, action: "confirm" | "correct" | "flag", value?: string) => void }) {
+function FieldRow({ field, canReview, busy, onReview }: { field: FieldExtraction; canReview: boolean; busy: boolean; onReview: (field: FieldExtraction, action: "confirm" | "correct" | "absent" | "flag", value?: string) => void }) {
   const [value, setValue] = useState(field.reviewed_value ?? field.extracted_value ?? "");
   const completed = !field.requires_review && field.review_action !== null && field.review_action !== "flag";
   const percent = Math.round(field.confidence * 100);
@@ -305,7 +309,7 @@ function FieldRow({ field, canReview, busy, onReview }: { field: FieldExtraction
     : Math.round(field.metadata_match_score * 100);
   return <article className={`field-item ${completed ? "field-done" : "field-pending"}`}>
     <div className="field-head"><div><strong>{humanize(field.field_name)}</strong><span className={`confidence confidence-${percent >= 80 ? "high" : percent >= 55 ? "medium" : "low"}`}>{percent}% confidence{percent < 55 ? " · low" : ""}</span></div><span className={`review-state ${completed ? "reviewed" : "needs-review"}`}>{completed ? <><Check size={13} /> Reviewed</> : <><AlertCircle size={13} /> Review needed</>}</span></div>
-    {field.raw_ocr_text && <p className="source-text">Extracted from: “{field.raw_ocr_text}”</p>}
+    {field.raw_ocr_text && <p className="source-text"><strong>Source text:</strong> “{field.raw_ocr_text}”</p>}
     {field.source_page !== null && <p className="finding-rule">Source page: {field.source_page}</p>}
     <div className="field-match-details">
       <span>Label match (TF-IDF): {labelMatchPercent}%</span>
@@ -314,9 +318,14 @@ function FieldRow({ field, canReview, busy, onReview }: { field: FieldExtraction
         <small>Expected: {field.expected_value}</small>
       </span>}
     </div>
-    {completed || !canReview ? <div className="final-value"><span>{completed ? "Confirmed value" : "Extracted value"}</span><strong>{field.reviewed_value ?? field.extracted_value ?? "No value extracted"}</strong>{!completed && !canReview && <small>Awaiting reviewer confirmation</small>}</div> : <>
-      <div className="field-input-row"><input value={value} onChange={(event) => setValue(event.target.value)} placeholder="No value found — enter a correction if available" aria-label={`Review ${humanize(field.field_name)}`} /><button className="button button-secondary" disabled={busy} onClick={() => onReview(field, "confirm")}>{busy ? "Saving…" : field.extracted_value == null ? "Confirm absent" : "Confirm"}</button><button className="button button-primary" disabled={busy || !value.trim()} onClick={() => onReview(field, "correct", value)}>{busy ? "Saving…" : "Save correction"}</button></div>
-      <button className="text-button" disabled={busy} onClick={() => onReview(field, "flag", value)}>Flag for follow-up</button>
+    <div className="final-value"><span>{field.review_action ? `Reviewer action: ${humanize(field.review_action)}` : "Extracted value"}</span><strong>{field.review_action === "absent" ? "Marked absent" : field.reviewed_value ?? field.extracted_value ?? "No value extracted"}</strong>{!completed && !canReview && <small>Awaiting reviewer confirmation</small>}</div>
+    {canReview && <>
+      <div className="field-input-row"><input value={value} onChange={(event) => setValue(event.target.value)} placeholder="Edit the extracted text if it is incorrect" aria-label={`Correct ${humanize(field.field_name)}`} /><button className="button button-primary" disabled={busy || !value.trim()} onClick={() => onReview(field, "correct", value)}>{busy ? "Saving…" : "Save correction"}</button></div>
+      <div className="field-review-actions">
+        <button className="button button-secondary compact" disabled={busy || !field.extracted_value} onClick={() => onReview(field, "confirm")}>{busy ? "Saving…" : "Confirm extracted text"}</button>
+        <button className="button button-secondary compact" disabled={busy} onClick={() => onReview(field, "absent")}>{busy ? "Saving…" : "Mark absent"}</button>
+        <button className="text-button" disabled={busy} onClick={() => onReview(field, "flag", value)}>{busy ? "Saving…" : "Flag for follow-up"}</button>
+      </div>
     </>}
   </article>;
 }

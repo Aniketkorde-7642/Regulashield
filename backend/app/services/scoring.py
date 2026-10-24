@@ -77,8 +77,12 @@ def calculate_compliance_score(
         ]
         candidate_scores = [
             value_match_score(
-                getattr(item, "reviewed_value", None)
-                or getattr(item, "extracted_value", None),
+                (
+                    None
+                    if getattr(item, "review_action", None) == "absent"
+                    else getattr(item, "reviewed_value", None)
+                    or getattr(item, "extracted_value", None)
+                ),
                 expected,
                 field_name=field_name,
             )
@@ -86,8 +90,11 @@ def calculate_compliance_score(
         ]
         present_scores = [score for score in candidate_scores if score is not None]
         has_value = any(
-            getattr(item, "reviewed_value", None)
-            or getattr(item, "extracted_value", None)
+            getattr(item, "review_action", None) != "absent"
+            and (
+                getattr(item, "reviewed_value", None)
+                or getattr(item, "extracted_value", None)
+            )
             for item in field_candidates
         )
         score = (
@@ -97,20 +104,21 @@ def calculate_compliance_score(
         )
         if field_name in metadata_fields:
             metadata_values.append(score)
-        if not field_candidates or not any(
-            getattr(item, "reviewed_value", None)
-            or getattr(item, "extracted_value", None)
-            for item in field_candidates
-        ):
+        if not has_value:
             missing_fields.append(field_name)
         field_scores.append(
             {
                 "field_name": field_name,
                 "expected_value": expected,
                 "extracted_values": [
-                    getattr(item, "reviewed_value", None)
+                    None
+                    if getattr(item, "review_action", None) == "absent"
+                    else getattr(item, "reviewed_value", None)
                     or getattr(item, "extracted_value", None)
                     for item in field_candidates
+                ],
+                "review_actions": [
+                    getattr(item, "review_action", None) for item in field_candidates
                 ],
                 "score": round(score * 100),
                 "sources": [

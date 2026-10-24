@@ -11,10 +11,6 @@ const DOCUMENT_TYPES = new Set([
   "fire_safety",
   "other",
 ]);
-const API_ORIGIN = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : undefined;
-
 export async function POST(request: Request) {
   const authorization = request.headers.get("authorization");
   if (!authorization?.startsWith("Bearer ")) {
@@ -58,12 +54,15 @@ export async function POST(request: Request) {
         const applicationResponse = await fetch(
           new URL(
             `/api/applications/${encodeURIComponent(payload.applicationId)}/review`,
-            API_ORIGIN ?? request.url,
+            request.url,
           ),
           { headers: { Authorization: authorization }, cache: "no-store" },
         );
         if (!applicationResponse.ok) {
           throw new Error("You are not authorized to upload to this application.");
+        }
+        if (!applicationResponse.headers.get("content-type")?.includes("application/json")) {
+          throw new Error("The application API returned an unexpected response. Please retry.");
         }
         const application = await applicationResponse.json() as {
           application: { status: string };

@@ -130,6 +130,10 @@ export function ApplicationReviewPage() {
           />
         </div>
         <aside className="review-side-column">
+          {!canDecide && <section className="panel">
+            <div className="panel-heading"><div><h3>Evidence match summary</h3><p>Advisory comparison of extracted values with your application details.</p></div></div>
+            <MatchSummaryCard matchSummary={review.match_summary} />
+          </section>}
           <FindingsSection
             findings={review.findings}
             canResolve={canReview}
@@ -408,17 +412,7 @@ function DecisionSection({ review, blockers, onDecided }: { review: ApplicationR
   return <section className="panel decision-panel">
     <div className="panel-heading"><div><h3>Officer decision</h3><p>Final decision is recorded in the audit trail.</p></div></div>
     <div className="decision-body">
-      <div className={`match-score match-score-${matchSummary.recommendation}`}>
-        <div className="match-score-heading">
-          <div><span>Overall metadata match</span><strong>{matchSummary.score}%</strong></div>
-          <span className="match-recommendation">Suggest {matchSummary.recommendation}</span>
-        </div>
-        <div className="match-score-track" role="progressbar" aria-label="Overall metadata match score" aria-valuemin={0} aria-valuemax={100} aria-valuenow={matchSummary.score}>
-          <span style={{ width: `${matchSummary.score}%` }} />
-        </div>
-        <p>{matchSummary.matched_fields} of {matchSummary.total_fields} metadata fields match. Score above {matchSummary.threshold}% suggests approval; otherwise review/rejection is suggested.</p>
-        <small>Advisory only; the officer makes the final decision.</small>
-      </div>
+      <MatchSummaryCard matchSummary={matchSummary} />
       {finalized ? <div className={`decision-record decision-${application.status}`}><span>{application.status === "approved" ? <CheckCircle2 size={19} /> : <XCircle size={19} />}</span><div><strong>Application {application.status}</strong><p>This case has a final decision and is read-only.</p></div></div> : <>
         <label className="decision-note">Decision note <textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={2000} placeholder="Add context for this decision (optional)" /></label>
         {reasons.length > 0 && <div className="decision-checklist"><strong>Approval checklist</strong>{reasons.map((reason) => <p key={reason}><AlertCircle size={14} />{reason}</p>)}</div>}
@@ -428,6 +422,24 @@ function DecisionSection({ review, blockers, onDecided }: { review: ApplicationR
       </>}
     </div>
   </section>;
+}
+
+function MatchSummaryCard({
+  matchSummary,
+}: {
+  matchSummary: ApplicationReview["match_summary"];
+}) {
+  return <div className={`match-score match-score-${matchSummary.recommendation}`}>
+    <div className="match-score-heading">
+      <div><span>Overall metadata match (TF-IDF)</span><strong>{matchSummary.score}%</strong></div>
+      <span className="match-recommendation">Suggest {matchSummary.recommendation}</span>
+    </div>
+    <div className="match-score-track" role="progressbar" aria-label="Overall metadata match score" aria-valuemin={0} aria-valuemax={100} aria-valuenow={matchSummary.score}>
+      <span style={{ width: `${matchSummary.score}%` }} />
+    </div>
+    <p>{matchSummary.matched_fields} of {matchSummary.total_fields} metadata fields match. Institution-name similarity uses TF-IDF; identifiers and numeric values must match exactly. Score above {matchSummary.threshold}% suggests approval; otherwise review/rejection is suggested.</p>
+    <small>Advisory only; an authorized reviewer makes the final decision.</small>
+  </div>;
 }
 
 function ApplicationInfo({ application }: { application: ApplicationReview["application"] }) {

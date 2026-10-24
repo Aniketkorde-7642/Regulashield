@@ -70,6 +70,7 @@ def get_review_queue(
                 match_score = value_match_score(
                     extraction.extracted_value,
                     expected,
+                    field_name=extraction.field_name,
                 )
                 if expected is not None and match_score is not None and match_score < 0.99:
                     metadata_discrepancies.append(
@@ -152,7 +153,11 @@ def get_review(
     for field in extractions:
         expected_value = expected_application_value(field.field_name, application)
         result = ExtractionOut.model_validate(field).model_dump()
-        metadata_match = value_match_score(field.extracted_value, expected_value)
+        metadata_match = value_match_score(
+            field.extracted_value,
+            expected_value,
+            field_name=field.field_name,
+        )
         confidence = field.confidence
         if metadata_match is not None:
             confidence *= 0.5 + 0.5 * metadata_match

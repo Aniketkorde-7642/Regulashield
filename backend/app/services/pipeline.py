@@ -80,6 +80,7 @@ def process_document(document_id: str) -> None:
             metadata_score = value_match_score(
                 field["extracted_value"],
                 expected_application_value(field["field_name"], application),
+                field_name=field["field_name"],
             )
             if metadata_score is not None and metadata_score < 0.99:
                 field["requires_review"] = True

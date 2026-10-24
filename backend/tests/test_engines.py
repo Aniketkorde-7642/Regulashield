@@ -78,6 +78,28 @@ def test_tfidf_label_matching_extracts_common_document_label_variants():
     assert field_label_match_score("Name of Institute", "institution_name") > 0.45
 
 
+def test_extracts_ocr_labels_with_tabs_synonyms_and_filler_words():
+    for institution_label in (
+        "Name of the Institution\tNorth Valley College",
+        "Name of the Institution:\nNorth Valley College",
+    ):
+        fields = {
+            field["field_name"]: field
+            for field in extract_fields(
+                f"{institution_label}\n"
+                "Total No. of Faculty: 24\n"
+                "Total Strength of Students: 600\n"
+                "Area of Campus (Acres): 4.5",
+                0.75,
+            )
+        }
+
+        assert fields["institution_name"]["extracted_value"] == "North Valley College"
+        assert fields["faculty_count"]["extracted_value"] == "24"
+        assert fields["student_count"]["extracted_value"] == "600"
+        assert fields["land_area"]["extracted_value"] == "4.5"
+
+
 def test_extracts_key_value_tables_without_mislabeling_reference_numbers_or_dates():
     fields = {
         field["field_name"]: field
@@ -159,19 +181,19 @@ def test_overall_match_score_uses_fifty_percent_recommendation_threshold():
     exact_threshold = overall_metadata_match_score(
         application,
         [
-            *fields[:4],
             SimpleNamespace(
                 field_name="institution_name",
                 extracted_value="North Valley Institute",
                 reviewed_value=None,
             ),
+            *fields[1:4],
         ],
     )
     assert exact_threshold["score"] == 50
     assert exact_threshold["recommendation"] == "reject"
 
 
-def test_overall_match_score_counts_only_exact_normalized_values():
+def test_overall_match_score_uses_tfidf_for_names_and_exact_matches_for_ids():
     application = SimpleNamespace(
         institution_name="North Valley College",
         institution_id="INST-001",
@@ -196,9 +218,22 @@ def test_overall_match_score_counts_only_exact_normalized_values():
 
     summary = overall_metadata_match_score(application, fields)
 
-    assert summary["score"] == 85
+    assert summary["score"] == 92
     assert summary["matched_fields"] == 6
     assert summary["recommendation"] == "approve"
+
+
+def test_metadata_tfidf_does_not_give_partial_credit_for_mismatched_identifiers():
+    assert value_match_score(
+        "APP-2026-002",
+        "APP-2026-001",
+        field_name="application_number",
+    ) == 0.0
+    assert value_match_score(
+        "North Valley Institute",
+        "North Valley College",
+        field_name="institution_name",
+    ) > 0.0
 
 
 def test_overall_match_score_never_rounds_a_nonperfect_match_up_to_100():
@@ -322,6 +357,37 @@ def test_scanned_pdf_without_recognized_text_is_reported(monkeypatch):
     assert result.scanned_pages == 1
     assert result.ocr_used_pages == 0
     assert result.unreadable_scanned_pages == 1
+
+
+def test_vector_only_page_without_native_text_is_sent_through_ocr(monkeypatch):
+    document = fitz.open()
+    page = document.new_page()
+    page.draw_rect(fitz.Rect(30, 30, 570, 780), color=(0, 0, 0))
+    pdf_bytes = document.tobytes()
+    document.close()
+
+    original_get_text = fitz.Page.get_text
+    ocr_calls: list[dict[str, object]] = []
+
+    def fake_ocr(page, **kwargs):
+        ocr_calls.append(kwargs)
+        return page.get_textpage()
+
+    def fake_get_text(page, *args, **kwargs):
+        text = original_get_text(page, *args, **kwargs)
+        if kwargs.get("textpage") is not None and page.get_drawings():
+            return f"{text}\nInstitution Name: Vector Scan College"
+        return text
+
+    monkeypatch.setattr(fitz.Page, "get_textpage_ocr", fake_ocr)
+    monkeypatch.setattr(fitz.Page, "get_text", fake_get_text)
+
+    result = extract_pdf_document(pdf_bytes)
+
+    assert result.raw_text == "Institution Name: Vector Scan College"
+    assert result.scanned_pages == 1
+    assert result.ocr_used_pages == 1
+    assert len(ocr_calls) == 1
 
 
 def test_missing_tesseract_returns_actionable_error(monkeypatch):

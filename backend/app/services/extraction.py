@@ -48,20 +48,34 @@ FIELD_LABELS: dict[str, tuple[str, ...]] = {
         "declared faculty",
         "declared faculty count",
         "faculty count",
+        "total faculty",
+        "total faculty count",
+        "faculty members",
+        "total faculty members",
+        "total no of faculty",
+        "total number of faculty",
+        "number of faculty members",
+        "no of faculty",
         "number of faculty",
         "faculty strength",
         "teaching staff",
+        "total teaching staff",
         "number of teachers",
     ),
     "student_count": (
         "declared students",
         "declared student count",
         "student count",
+        "total students",
+        "total student count",
+        "students strength",
+        "total strength of students",
+        "total number of students",
+        "no of students",
         "number of students",
         "student strength",
         "enrollment",
         "enrolment",
-        "total students",
     ),
     "academic_year": ("academic year", "academic session", "session"),
     "affiliation_number": (
@@ -76,6 +90,8 @@ FIELD_LABELS: dict[str, tuple[str, ...]] = {
         "campus area",
         "site area",
         "area of campus",
+        "area of campus acres",
+        "campus area acres",
         "total area",
     ),
     "issue_date": ("issue date", "issued on", "date of issue"),
@@ -94,9 +110,22 @@ METADATA_MATCH_FIELDS = (
 MATCH_RECOMMENDATION_THRESHOLD = 50
 
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+", re.IGNORECASE)
-_LABEL_VALUE_PATTERN = re.compile(r"^\s*(.{2,80}?)\s*[:\-|]\s*(.*?)\s*$")
+_LABEL_VALUE_PATTERN = re.compile(
+    r"^\s*(.{2,80}?)(?:\s*[:=|：]\s*|\s+[-–—]\s+|\t+|\s{2,})(.*?)\s*$"
+)
+_LABEL_STOPWORDS = frozenset({"a", "and", "of", "the"})
+
+
+def _label_tokens(label: str) -> list[str]:
+    return [
+        token
+        for token in _TOKEN_PATTERN.findall(label.casefold())
+        if token not in _LABEL_STOPWORDS
+    ]
+
+
 _ALIAS_DOCUMENTS = [
-    _TOKEN_PATTERN.findall(alias.casefold())
+    _label_tokens(alias)
     for aliases in FIELD_LABELS.values()
     for alias in aliases
 ]
@@ -133,7 +162,7 @@ def _cosine_similarity(left: dict[str, float], right: dict[str, float]) -> float
 
 
 def _normalized_label(label: str) -> str:
-    return " ".join(_TOKEN_PATTERN.findall(label.casefold()))
+    return " ".join(_label_tokens(label))
 
 
 def field_label_match_score(label: str, field_name: str) -> float:
@@ -141,7 +170,7 @@ def field_label_match_score(label: str, field_name: str) -> float:
     aliases = FIELD_LABELS.get(field_name, ())
     if not aliases:
         return 0.0
-    label_tokens = _TOKEN_PATTERN.findall(label.casefold())
+    label_tokens = _label_tokens(label)
     label_normalized = " ".join(label_tokens)
     label_vector = _tfidf_vector(
         label_tokens, len(_ALIAS_DOCUMENTS), _ALIAS_DOCUMENT_FREQUENCY
@@ -212,7 +241,12 @@ def _valid_candidate_value(field_name: str, value: str) -> str | None:
     return value
 
 
-def value_match_score(extracted_value: str | None, expected_value: str | None) -> float | None:
+def value_match_score(
+    extracted_value: str | None,
+    expected_value: str | None,
+    *,
+    field_name: str | None = None,
+) -> float | None:
     if not extracted_value or not expected_value:
         return None
     extracted_normalized = normalize_value(extracted_value)
@@ -240,6 +274,8 @@ def value_match_score(extracted_value: str | None, expected_value: str | None) -
             return 1.0
     if extracted_normalized == expected_normalized:
         return 1.0
+    if field_name is not None and field_name != "institution_name":
+        return 0.0
     extracted_tokens = _TOKEN_PATTERN.findall(extracted_normalized or "")
     expected_tokens = _TOKEN_PATTERN.findall(expected_normalized or "")
     documents = [extracted_tokens, expected_tokens]
@@ -264,24 +300,6 @@ def expected_application_value(field_name: str, application: object) -> str | No
     return str(value) if value is not None else None
 
 
-def _canonical_exact_value(value: str) -> str:
-    year = re.fullmatch(r"(\d{4})\s*[-/–—]\s*(\d{2,4})", value)
-    if year:
-        return f"{year.group(1)}-{year.group(2)[-2:]}"
-
-    number_pattern = r"(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?"
-    if re.fullmatch(number_pattern, value):
-        integer, _, fraction = value.replace(",", "").partition(".")
-        normalized_integer = integer.lstrip("0") or "0"
-        normalized_fraction = fraction.rstrip("0")
-        return (
-            f"{normalized_integer}.{normalized_fraction}"
-            if normalized_fraction
-            else normalized_integer
-        )
-    return value
-
-
 def overall_metadata_match_score(
     application: object, extractions: list[object]
 ) -> dict[str, int | str]:
@@ -295,11 +313,12 @@ def overall_metadata_match_score(
             if getattr(extraction, "field_name", None) == field_name
         ]
         candidate_scores = [
-            float(
-                bool(candidate and expected_value)
-                and _canonical_exact_value(normalize_value(candidate) or "")
-                == _canonical_exact_value(normalize_value(expected_value) or "")
+            value_match_score(
+                candidate,
+                expected_value,
+                field_name=field_name,
             )
+            or 0.0
             for candidate in candidates
         ]
         scores.append(sum(candidate_scores) / len(candidate_scores) if candidate_scores else 0.0)
@@ -312,9 +331,7 @@ def overall_metadata_match_score(
         "total_fields": len(METADATA_MATCH_FIELDS),
         "threshold": MATCH_RECOMMENDATION_THRESHOLD,
         "recommendation": (
-            "approve"
-            if unrounded_score > MATCH_RECOMMENDATION_THRESHOLD
-            else "reject"
+            "approve" if score_percent > MATCH_RECOMMENDATION_THRESHOLD else "reject"
         ),
     }
 
@@ -357,7 +374,23 @@ def extract_fields(
             resolved = _resolve_field_label(label)
             if resolved:
                 field_name, score = resolved
-                add_candidate(field_name, score, value, line)
+                if value.strip():
+                    add_candidate(field_name, score, value, line)
+                else:
+                    value_index = index + 1
+                    while value_index < len(lines) and not lines[value_index]:
+                        value_index += 1
+                    if (
+                        value_index < len(lines)
+                        and not _resolve_field_label(lines[value_index])
+                        and not _LABEL_VALUE_PATTERN.match(lines[value_index])
+                    ):
+                        add_candidate(
+                            field_name,
+                            score,
+                            lines[value_index],
+                            f"{line}\n{lines[value_index]}",
+                        )
             continue
 
         resolved = _resolve_field_label(line)

@@ -71,8 +71,15 @@ def extract_pdf_document(pdf_bytes: bytes) -> PdfTextExtraction:
             )
             page_area = page.rect.get_area()
             has_scan_image = page_area > 0 and image_area / page_area >= 0.3
-            is_scanned = has_scan_image and len(native_text) < 80
-            needs_ocr = bool(image_info) and (has_scan_image or not native_text)
+            has_vector_content = (
+                bool(page.get_drawings()) if len(native_text) < 80 else False
+            )
+            is_scanned = len(native_text) < 80 and (
+                has_scan_image or (not image_info and has_vector_content)
+            )
+            needs_ocr = has_scan_image or (
+                not native_text and (bool(image_info) or has_vector_content)
+            )
 
             if needs_ocr:
                 ocr_pages += 1

@@ -79,6 +79,12 @@ automatically retrieve or verify AICTE amendments, and does not use a
 generative-AI model to write scrutiny reports. Reports are produced by OCR,
 cross-document consistency checks, and the configured rule engine. Authorized
 staff must verify official regulatory sources before adding production rules.
+Text-bearing PDFs use native text extraction; image-based pages and text-free
+vector pages are sent through Tesseract OCR. Extracted field labels are matched
+against known variants with TF-IDF. The overall metadata score uses TF-IDF
+similarity for institution names and exact normalized matches for identifiers
+and numeric values. A score above 50% suggests approval, but the score is
+advisory and an authorized reviewer records the final decision.
 
 Uploaded files and the SQLite database are stored under `backend/storage/`.
 

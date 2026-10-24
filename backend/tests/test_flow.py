@@ -192,6 +192,52 @@ def test_bootstrap_password_reset_rotates_all_existing_roles(
         assert response.status_code == 200, response.text
 
 
+def test_bootstrap_can_reset_only_the_admin_password(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    new_admin_password = "rotated-test-admin-only-password"
+    monkeypatch.setattr(config, "DEMO_MODE", False)
+    monkeypatch.setattr(config, "RESET_ADMIN_PASSWORD", True)
+    monkeypatch.setattr(config, "RESET_BOOTSTRAP_PASSWORDS", False)
+    monkeypatch.setattr(config, "ADMIN_PASSWORD", new_admin_password)
+
+    with SessionLocal() as db:
+        bootstrap_users(db)
+
+    admin_login = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": new_admin_password},
+    )
+    assert admin_login.status_code == 200
+    previous_admin_login = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "test-admin-password"},
+    )
+    assert previous_admin_login.status_code == 401
+
+    for username, password in (
+        ("officer", "test-officer-password"),
+        ("regulatory", "test-regulatory-password"),
+        ("institution", "test-institution-password"),
+        ("compliance", "test-compliance-password"),
+    ):
+        response = client.post(
+            "/api/auth/login",
+            json={"username": username, "password": password},
+        )
+        assert response.status_code == 200
+
+
+def test_admin_password_reset_requires_configured_password(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(config, "RESET_ADMIN_PASSWORD", True)
+    monkeypatch.setattr(config, "ADMIN_PASSWORD", None)
+
+    with SessionLocal() as db, pytest.raises(RuntimeError, match="ADMIN_PASSWORD"):
+        bootstrap_users(db)
+
+
 def test_complete_intake_review_and_audit_flow(client: TestClient, auth_headers: dict[str, str]):
     application = create_application(client, auth_headers)
     pdf = make_pdf(

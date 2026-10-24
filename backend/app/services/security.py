@@ -79,6 +79,10 @@ def verify_password(password: str, stored_hash: str) -> bool:
 def bootstrap_users(db: Session) -> None:
     if config.DEMO_MODE and not config.DEMO_ROLE_PASSWORD:
         raise RuntimeError("DEMO_ROLE_PASSWORD must be configured when DEMO_MODE is enabled.")
+    if config.RESET_ADMIN_PASSWORD and not config.ADMIN_PASSWORD:
+        raise RuntimeError(
+            "ADMIN_PASSWORD must be configured when RESET_ADMIN_PASSWORD is enabled."
+        )
 
     seeds = (
         ("admin", "System Administrator", "admin", config.ADMIN_PASSWORD),
@@ -117,6 +121,8 @@ def bootstrap_users(db: Session) -> None:
         if existing:
             if username in demo_passwords:
                 existing.password_hash = hash_password(demo_passwords[username])
+            elif config.RESET_ADMIN_PASSWORD and username == "admin":
+                existing.password_hash = hash_password(config.ADMIN_PASSWORD)
             elif config.RESET_BOOTSTRAP_PASSWORDS:
                 existing.password_hash = hash_password(configured_password)
             continue

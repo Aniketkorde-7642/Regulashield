@@ -264,6 +264,12 @@ are not printed in Vercel logs; the administrator can set passwords from the
 user-management dashboard. Do not enable demo mode in the public production
 project.
 
+For a controlled System Administrator password reset, set a new strong
+`ADMIN_PASSWORD` secret and temporarily set `RESET_ADMIN_PASSWORD=true` for
+Production, then deploy. This resets only the seeded `admin` account; other
+role passwords are unchanged. After the reset deployment is ready, remove
+`RESET_ADMIN_PASSWORD` and deploy again. Never commit or log the password.
+
 ### Protected demo deployment
 
 If shared demo accounts are needed, use a separate Vercel project with its own

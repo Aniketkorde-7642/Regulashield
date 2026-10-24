@@ -31,6 +31,9 @@ COMPLIANCE_ADMIN_PASSWORD = os.getenv("COMPLIANCE_ADMIN_PASSWORD")
 DEMO_MODE = os.getenv("DEMO_MODE", "false").strip().casefold() == "true"
 DEMO_ROLE_PASSWORD = os.getenv("DEMO_ROLE_PASSWORD")
 DEMO_ACCESS_PROTECTION = os.getenv("DEMO_ACCESS_PROTECTION", "").strip().casefold()
+RESET_ADMIN_PASSWORD = (
+    os.getenv("RESET_ADMIN_PASSWORD", "false").strip().casefold() == "true"
+)
 RESET_BOOTSTRAP_PASSWORDS = (
     os.getenv("RESET_BOOTSTRAP_PASSWORDS", "false").strip().casefold() == "true"
 )

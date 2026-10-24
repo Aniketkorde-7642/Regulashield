@@ -19,6 +19,12 @@ export async function POST(request: Request) {
   if (!authorization?.startsWith("Bearer ")) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    return NextResponse.json(
+      { error: "Evidence uploads are not configured. Set BLOB_READ_WRITE_TOKEN in the Vercel project." },
+      { status: 503 },
+    );
+  }
 
   let body: HandleUploadBody;
   try {

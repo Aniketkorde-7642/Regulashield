@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useState } from "react";
+import { FormEvent, useCallback, useRef, useState } from "react";
 import { ArrowRight, Eye, EyeOff, ShieldCheck, UserRound } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 
@@ -18,10 +18,10 @@ export function LoginScreen() {
   const [selectedRole, setSelectedRole] = useState("officer");
   const [displayName, setDisplayName] = useState("");
   const [registering, setRegistering] = useState(false);
-  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
 
   const signIn = useCallback(async (selectedUsername: string, selectedPassword: string) => {
     setBusy(true);
@@ -38,17 +38,20 @@ export function LoginScreen() {
   function selectRole(roleUsername: string) {
     setSelectedRole(roleUsername);
     setUsername(roleUsername);
-    setPassword("");
+    if (passwordInputRef.current) passwordInputRef.current.value = "";
     setError(null);
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const submittedUsername = String(formData.get("username") ?? "").trim();
+    const submittedPassword = String(formData.get("password") ?? "");
     if (registering) {
       setBusy(true);
       setError(null);
       try {
-        await registerInstitution(username, displayName, password);
+        await registerInstitution(submittedUsername, displayName, submittedPassword);
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : "Institution account could not be created.");
       } finally {
@@ -56,7 +59,7 @@ export function LoginScreen() {
       }
       return;
     }
-    await signIn(username, password);
+    await signIn(submittedUsername, submittedPassword);
   }
 
   const selectedRoleDetails = LOGIN_ROLES.find((role) => role.username === selectedRole);
@@ -98,14 +101,19 @@ export function LoginScreen() {
           </>}
           <div className="login-username-heading">
             <label htmlFor="username">Username</label>
-            {!registering && <button className="button button-secondary login-autofill" type="button" disabled={busy} onClick={() => { setUsername(selectedRoleDetails?.username ?? ""); setPassword(""); setError(null); }}>
+            {!registering && <button className="button button-secondary login-autofill" type="button" disabled={busy} onClick={() => {
+              setUsername(selectedRoleDetails?.username ?? "");
+              if (passwordInputRef.current) passwordInputRef.current.value = "";
+              setError(null);
+              window.requestAnimationFrame(() => passwordInputRef.current?.focus());
+            }}>
               <UserRound size={14} /> Auto-Fill
             </button>}
           </div>
           <input id="username" name="username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} minLength={registering ? 3 : undefined} maxLength={80} required />
           <div className="password-label"><label htmlFor="password">Password</label><span>{registering ? "At least 12 characters" : "Your private account password"}</span></div>
           <div className="password-input">
-            <input id="password" name="password" type={showPassword ? "text" : "password"} autoComplete={registering ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} minLength={registering ? 12 : undefined} maxLength={256} required />
+            <input key={registering ? "registration-password" : "login-password"} ref={passwordInputRef} id="password" name="password" type={showPassword ? "text" : "password"} autoComplete={registering ? "new-password" : "current-password"} defaultValue="" minLength={registering ? 12 : undefined} maxLength={256} required />
             <button type="button" aria-label={showPassword ? "Hide password" : "Show password"} title={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}<span>{showPassword ? "Hide" : "Show"}</span></button>
           </div>
           {registering && <small>Use at least 12 characters. New accounts are created with the Institution Applicant role.</small>}
@@ -114,7 +122,7 @@ export function LoginScreen() {
           <button className="button button-primary login-submit" type="submit" disabled={busy}>{busy ? (registering ? "Creating account…" : "Signing in…") : registering ? "Create Institution Applicant account" : <>Login <ArrowRight size={17} /></>}</button>
         </form>
         {registering && <div className="login-help"><span className="status-dot" />Create an institution account to submit applications for System Administrator review.</div>}
-        <button className="text-button login-mode-toggle" type="button" disabled={busy} onClick={() => { setRegistering((current) => !current); setError(null); setPassword(""); }}>
+        <button className="text-button login-mode-toggle" type="button" disabled={busy} onClick={() => { setRegistering((current) => !current); setError(null); }}>
           {registering ? "Already have an account? Sign in" : "New Institution Applicant? Create an account"}
         </button>
       </section>

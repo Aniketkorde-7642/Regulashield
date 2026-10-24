@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class LoginRequest(BaseModel):
@@ -255,6 +255,7 @@ class ExtractionOut(BaseModel):
     normalized_value: str | None
     confidence: float
     raw_ocr_text: str | None
+    source_page: int | None = None
     requires_review: bool
     reviewed_value: str | None
     review_action: str | None
@@ -299,6 +300,7 @@ class ApplicationDecisionReport(BaseModel):
     decided_by: str
     decided_at: datetime
     match_summary: dict[str, Any]
+    compliance_summary: dict[str, Any] = Field(default_factory=dict)
     documents: list[DocumentOut]
     findings: list[FindingOut]
 
@@ -317,6 +319,26 @@ class DecisionRequest(BaseModel):
     decision: str = Field(pattern=r"^(approve|reject)$")
     note: str | None = Field(default=None, max_length=2000)
     override_blockers: bool = False
+
+    @model_validator(mode="after")
+    def require_rejection_reason(self) -> DecisionRequest:
+        if self.decision == "reject" and not (self.note or "").strip():
+            raise ValueError("A rejection reason is required.")
+        if self.note is not None:
+            self.note = self.note.strip()
+        return self
+
+
+class CorrectionsRequest(BaseModel):
+    note: str = Field(min_length=8, max_length=2000)
+
+    @field_validator("note")
+    @classmethod
+    def strip_corrections_note(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("A correction request reason is required.")
+        return value
 
 
 class AuditOut(BaseModel):

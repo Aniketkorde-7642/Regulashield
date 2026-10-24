@@ -134,6 +134,7 @@ class FieldExtraction(Base):
     normalized_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
     raw_ocr_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_page: Mapped[int | None] = mapped_column(Integer, nullable=True)
     requires_review: Mapped[bool] = mapped_column(Boolean, default=True)
     reviewed_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewed_by: Mapped[str | None] = mapped_column(String(80), nullable=True)

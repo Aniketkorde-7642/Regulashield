@@ -26,6 +26,7 @@ _OPERATORS = {
 @dataclass(frozen=True)
 class PdfTextExtraction:
     raw_text: str
+    page_texts: tuple[str, ...]
     page_count: int
     scanned_pages: int
     ocr_pages: int
@@ -111,6 +112,7 @@ def extract_pdf_document(pdf_bytes: bytes) -> PdfTextExtraction:
 
     return PdfTextExtraction(
         raw_text="\n".join(text_by_page).strip(),
+        page_texts=tuple(text_by_page),
         page_count=page_count,
         scanned_pages=scanned_pages,
         ocr_pages=ocr_pages,

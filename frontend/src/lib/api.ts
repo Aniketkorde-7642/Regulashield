@@ -293,6 +293,11 @@ export const api = {
         override_blockers: overrideBlockers,
       }),
     }),
+  requestCorrections: (applicationId: string, note: string) =>
+      request<ApplicationReview["application"]>(`/applications/${encodeURIComponent(applicationId)}/corrections`, {
+        method: "POST",
+        body: JSON.stringify({ note }),
+      }),
   audit: (limit = 200) => request<AuditResponse>(`/audit?limit=${limit}`),
   downloadDocument: async (documentId: string) => {
     const headers = new Headers();

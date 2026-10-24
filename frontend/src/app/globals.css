@@ -246,6 +246,12 @@ h1, h2, h3, p { margin-top: 0; }
 .finding-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
 .button.compact { min-height: 30px; padding: 0 9px; font-size: 9px; }
 .decision-body { display: grid; gap: 11px; }
+.compliance-score { display: grid; gap: 4px; padding: 12px; background: #f8f9fc; border-radius: 8px; }
+.compliance-score strong { color: var(--brand-dark); font-size: 26px; }
+.compliance-score span, .compliance-categories span, .compliance-field-list small { color: var(--muted); font-size: 11px; }
+.compliance-categories, .compliance-field-list { display: grid; gap: 8px; }
+.compliance-categories > div, .compliance-field-list > div { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--line); padding: 6px 0; }
+.compliance-field-list > div { display: grid; }
 .decision-note { display: grid; gap: 6px; color: #59667c; font-size: 10px; font-weight: 700; }
 .decision-note textarea { min-height: 74px; resize: vertical; padding: 9px; color: var(--ink); border: 1px solid var(--line); border-radius: 7px; font-size: 10px; font-weight: 400; }
 .match-score { display: grid; gap: 8px; padding: 12px; border: 1px solid #e3e8f0; border-radius: 8px; background: #f8f9fc; }

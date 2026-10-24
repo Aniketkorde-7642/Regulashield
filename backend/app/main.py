@@ -40,6 +40,18 @@ def initialize_database() -> None:
                         + "owner_username VARCHAR(80)"
                     )
                 )
+            extraction_columns = {
+                column["name"]
+                for column in inspect(connection).get_columns("field_extractions")
+            }
+            if "source_page" not in extraction_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE field_extractions ADD COLUMN "
+                        + ("IF NOT EXISTS " if is_postgres else "")
+                        + "source_page INTEGER"
+                    )
+                )
             connection.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_applications_owner_username "

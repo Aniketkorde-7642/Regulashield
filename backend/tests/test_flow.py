@@ -265,10 +265,13 @@ def test_complete_intake_review_and_audit_flow(client: TestClient, auth_headers:
     assert fields["institution_name"]["label_match_score"] == 1.0
     assert fields["institution_name"]["expected_value"] == "North Valley College"
     assert fields["institution_name"]["metadata_match_score"] == 1.0
+    assert fields["institution_name"]["source_page"] == 1
     assert fields["faculty_count"]["expected_value"] == "24"
     assert fields["faculty_count"]["metadata_match_score"] == 1.0
     assert review.json()["match_summary"]["score"] == 57
     assert review.json()["match_summary"]["recommendation"] == "approve"
+    assert review.json()["compliance_summary"]["status"] == "needs_review"
+    assert review.json()["compliance_summary"]["missing_documents"]
 
     for field in fields.values():
         if field["review_action"] is None or field["requires_review"]:
@@ -298,6 +301,13 @@ def test_officer_rejection_sets_final_application_status(
     client: TestClient, auth_headers: dict[str, str]
 ):
     application = create_application(client, auth_headers)
+
+    missing_reason = client.post(
+        f"/api/applications/{application['id']}/decision",
+        headers=auth_headers,
+        json={"decision": "reject"},
+    )
+    assert missing_reason.status_code == 422
 
     response = client.post(
         f"/api/applications/{application['id']}/decision",
@@ -741,7 +751,8 @@ def test_scanned_pdf_with_no_ocr_text_gets_blocking_finding(
     )
     assert finding["severity"] == "high"
     assert finding["status"] == "open"
-    assert review["application"]["documents"][0]["status"] == "processed"
+    assert review["application"]["documents"][0]["status"] == "failed"
+    assert review["compliance_summary"]["recommendation"] == "needs_review"
 
 
 def test_failed_ocr_can_be_retried_after_engine_is_fixed(
@@ -1051,6 +1062,32 @@ def test_institution_submission_requires_admin_decision_and_generates_report(
         json={"decision": "reject", "note": "Officer cannot issue institutional decisions."},
     ).status_code == 403
 
+    corrections = client.post(
+        f"/api/applications/{application_id}/corrections",
+        headers=admin_headers,
+        json={"note": "Please provide the updated affiliation certificate."},
+    )
+    assert corrections.status_code == 200, corrections.text
+    assert corrections.json()["status"] == "corrections_requested"
+    assert client.patch(
+        f"/api/applications/{application_id}",
+        headers=institution_headers,
+        json={"institution_name": "Administrator Review College"},
+    ).status_code == 200
+    correction_upload = client.post(
+        f"/api/applications/{application_id}/documents",
+        headers=institution_headers,
+        data={"document_type": "other"},
+        files={"file": ("correction.pdf", make_pdf("Updated affiliation evidence"), "application/pdf")},
+    )
+    assert correction_upload.status_code == 202, correction_upload.text
+    resubmitted = client.post(
+        f"/api/applications/{application_id}/submit",
+        headers=institution_headers,
+    )
+    assert resubmitted.status_code == 200, resubmitted.text
+    assert resubmitted.json()["status"] == "pending_admin_review"
+
     decision = client.post(
         f"/api/applications/{application_id}/decision",
         headers=admin_headers,
@@ -1067,6 +1104,7 @@ def test_institution_submission_requires_admin_decision_and_generates_report(
     assert report.json()["decision_note"] == "Required evidence needs correction."
     assert report.json()["documents"][0]["filename"] == "admin-review.pdf"
     assert "score" in report.json()["match_summary"]
+    assert "categories" in report.json()["compliance_summary"]
     assert client.get(
         f"/api/applications/{application_id}/decision-report", headers=officer_headers
     ).status_code == 403
@@ -1158,7 +1196,7 @@ def test_institution_dashboard_is_scoped_and_can_correct_owned_drafts(client: Te
     assert client.post(
         f"/api/applications/{own_application['id']}/decision",
         headers=institution_headers,
-        json={"decision": "reject"},
+        json={"decision": "reject", "note": "Institution cannot decide its own application."},
     ).status_code == 403
     upload = client.post(
         f"/api/applications/{own_application['id']}/documents",
@@ -1248,7 +1286,7 @@ def test_regulatory_officer_can_review_but_not_submit_or_decide(client: TestClie
     assert client.post(
         f"/api/applications/{application['id']}/decision",
         headers=regulatory_headers,
-        json={"decision": "reject"},
+        json={"decision": "reject", "note": "This role cannot issue application decisions."},
     ).status_code == 403
 
 

@@ -9,7 +9,7 @@ A local-first document review workflow for synthetic academic compliance applica
 5. Review extracted fields and findings.
 6. Confirm required evidence fields and resolve high-severity findings before approval.
 7. Submit the completed application for a System Administrator decision.
-8. Record an approval or rejection in a hash-linked audit trail and provide the institution with a decision report.
+8. Request corrections or record an approval/rejection in a hash-linked audit trail and provide the institution with a decision report.
 
 This is a demonstration system. Rules and issuer checks are synthetic and must not
 be used to make real accreditation decisions.
@@ -64,8 +64,10 @@ Institutions can run an advisory metadata pre-check before creating an
 application, edit their own draft details, upload typed evidence, and view
 missing-document and validation guidance. After all uploaded documents finish
 processing, an institution submits the application into the System
-Administrator decision queue. Submitted applications are locked against
-institution edits; AICTE Scrutiny Officers cannot issue their final decisions.
+Administrator decision queue. If corrections are requested, the institution
+can edit its details or evidence and resubmit. Other submitted applications
+remain locked against institution edits; AICTE Scrutiny Officers cannot issue
+final decisions on institution-owned applications.
 After approval or rejection, the institution receives an owner-scoped decision
 report with the outcome, note, decision maker/date, score summary, evidence,
 and findings; the report can be printed or saved as PDF. A rejected application
@@ -80,11 +82,20 @@ generative-AI model to write scrutiny reports. Reports are produced by OCR,
 cross-document consistency checks, and the configured rule engine. Authorized
 staff must verify official regulatory sources before adding production rules.
 Text-bearing PDFs use native text extraction; image-based pages and text-free
-vector pages are sent through Tesseract OCR. Extracted field labels are matched
-against known variants with TF-IDF. The overall metadata score uses TF-IDF
-similarity for institution names and exact normalized matches for identifiers
-and numeric values. A score above 50% suggests approval, but the score is
-advisory and an authorized reviewer records the final decision.
+vector pages are sent through Tesseract OCR. Unreadable documents are marked
+failed rather than processed. Extracted field labels are matched against known
+variants with TF-IDF, and extraction responses include source page references.
+The compliance score weights metadata consistency, required-document
+completeness, and regulatory compliance. Configure weights, the advisory
+approval threshold, and required document types with
+`COMPLIANCE_WEIGHT_METADATA_CONSISTENCY`,
+`COMPLIANCE_WEIGHT_DOCUMENT_COMPLETENESS`,
+`COMPLIANCE_WEIGHT_REGULATORY_COMPLIANCE`,
+`COMPLIANCE_APPROVE_THRESHOLD`, and
+`COMPLIANCE_REQUIRED_DOCUMENT_TYPES`. The score and recommendation are
+explainable and advisory; an authorized reviewer records the final decision.
+Rejections require a reason, and correction requests and status transitions are
+recorded in the audit trail.
 
 Uploaded files and the SQLite database are stored under `backend/storage/`.
 

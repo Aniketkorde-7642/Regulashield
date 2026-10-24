@@ -17,6 +17,8 @@ FIELD_PATTERNS: dict[str, str] = {
     "land_area": r"^\s*(?:Land|Campus)\s+Area\s*[:\-]\s*([\d,.]+\s*(?:sq\.?\s*m(?:eters?)?|sqft|acres?|hectares?)?)",
     "issue_date": r"^\s*(?:Issue\s*Date|Issued\s*On|Date\s+of\s+Issue)\s*[:\-]\s*([0-9]{1,4}[./-][0-9]{1,2}[./-][0-9]{1,4}|[0-9]{1,2}\s+[A-Za-z]+\s+[0-9]{4})",
     "expiry_date": r"^\s*(?:Expiry\s*Date|Expiration\s*Date|Valid\s+Until|Valid\s+Up\s+To)\s*[:\-]\s*([0-9]{1,4}[./-][0-9]{1,2}[./-][0-9]{1,4}|[0-9]{1,2}\s+[A-Za-z]+\s+[0-9]{4})",
+    "application_category": r"^\s*(?:Application\s+)?(?:Category|Type\s+of\s+Application)\s*[:\-]\s*([A-Z][A-Z0-9 _/-]{1,31})",
+    "certificate_number": r"^\s*(?:Certificate|Registration|Permit)\s+(?:No\.?|Number|ID)\s*[:\-]\s*([A-Z0-9][A-Z0-9\-/]{2,})",
 }
 
 FIELD_LABELS: dict[str, tuple[str, ...]] = {
@@ -96,6 +98,57 @@ FIELD_LABELS: dict[str, tuple[str, ...]] = {
     ),
     "issue_date": ("issue date", "issued on", "date of issue"),
     "expiry_date": ("expiry date", "expiration date", "valid until", "valid up to"),
+    "application_category": (
+        "application category",
+        "category",
+        "application type",
+        "type of application",
+    ),
+    "certificate_number": (
+        "certificate number",
+        "certificate no",
+        "registration number",
+        "permit number",
+    ),
+}
+
+DOCUMENT_FIELD_SCHEMAS: dict[str, tuple[str, ...]] = {
+    "affiliation_letter": (
+        "institution_name",
+        "institution_id",
+        "application_number",
+        "academic_year",
+        "affiliation_number",
+        "application_category",
+        "issue_date",
+        "expiry_date",
+        "certificate_number",
+    ),
+    "faculty_certificate": (
+        "institution_name",
+        "institution_id",
+        "academic_year",
+        "faculty_count",
+        "issue_date",
+        "expiry_date",
+        "certificate_number",
+    ),
+    "land_record": (
+        "institution_name",
+        "institution_id",
+        "land_area",
+        "issue_date",
+        "expiry_date",
+        "certificate_number",
+    ),
+    "fire_safety": (
+        "institution_name",
+        "institution_id",
+        "issue_date",
+        "expiry_date",
+        "certificate_number",
+    ),
+    "other": tuple(FIELD_PATTERNS),
 }
 
 METADATA_MATCH_FIELDS = (
@@ -235,6 +288,8 @@ def _valid_candidate_value(field_name: str, value: str) -> str | None:
         "land_area": r"^[\d,.]+\s*(?:sq\.?\s*m(?:eters?)?|sqft|acres?|hectares?)?$",
         "issue_date": r"^(?:[0-9]{1,4}[./-][0-9]{1,2}[./-][0-9]{1,4}|[0-9]{1,2}\s+[A-Za-z]+\s+[0-9]{4})$",
         "expiry_date": r"^(?:[0-9]{1,4}[./-][0-9]{1,2}[./-][0-9]{1,4}|[0-9]{1,2}\s+[A-Za-z]+\s+[0-9]{4})$",
+        "application_category": r"^[A-Z][A-Z0-9 _/-]{1,31}$",
+        "certificate_number": r"^[A-Z0-9][A-Z0-9\-/]{2,}$",
     }
     if not re.fullmatch(patterns[field_name], value, flags=re.IGNORECASE):
         return None
@@ -291,6 +346,7 @@ def expected_application_value(field_name: str, application: object) -> str | No
         "institution_id": "institution_id",
         "application_number": "application_number",
         "academic_year": "academic_year",
+        "application_category": "category",
         "faculty_count": "declared_faculty",
         "student_count": "declared_student_count",
         "land_area": "declared_land_area",
@@ -354,6 +410,34 @@ def extract_fields(
     confidence_threshold: float,
     *,
     ocr_used: bool = False,
+    page_texts: tuple[str, ...] | None = None,
+) -> list[dict[str, object]]:
+    pages = page_texts or (raw_text,)
+    fields_by_name: dict[str, dict[str, object]] = {}
+    for page_number, page_text in enumerate(pages, start=1):
+        for field in _extract_page_fields(
+            page_text,
+            confidence_threshold,
+            ocr_used=ocr_used,
+            source_page=page_number if page_texts else None,
+        ):
+            if field["extracted_value"] is None:
+                fields_by_name.setdefault(str(field["field_name"]), field)
+            elif (
+                str(field["field_name"]) not in fields_by_name
+                or field["confidence"]
+                > fields_by_name[str(field["field_name"])]["confidence"]
+            ):
+                fields_by_name[str(field["field_name"])] = field
+    return list(fields_by_name.values())
+
+
+def _extract_page_fields(
+    raw_text: str,
+    confidence_threshold: float,
+    *,
+    ocr_used: bool,
+    source_page: int | None,
 ) -> list[dict[str, object]]:
     candidates: dict[str, tuple[float, str, str]] = {}
     lines = [line.strip() for line in raw_text.splitlines()]
@@ -439,6 +523,7 @@ def extract_fields(
                 "normalized_value": normalize_value(value),
                 "confidence": confidence,
                 "raw_ocr_text": source_text,
+                "source_page": source_page if value else None,
                 "label_match_score": label_score,
                 "requires_review": ocr_used or confidence < confidence_threshold or value is None,
             }

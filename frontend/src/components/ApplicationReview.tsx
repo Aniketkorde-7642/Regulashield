@@ -130,6 +130,7 @@ export function ApplicationReviewPage() {
           />
         </div>
         <aside className="review-side-column">
+          <ComplianceSummaryCard summary={review.compliance_summary} />
           {!canDecide && <section className="panel">
             <div className="panel-heading"><div><h3>Evidence match summary</h3><p>Advisory comparison of extracted values with your application details.</p></div></div>
             <MatchSummaryCard matchSummary={review.match_summary} />
@@ -142,6 +143,7 @@ export function ApplicationReviewPage() {
           {canDecide && <DecisionSection
               review={review}
               blockers={blockers}
+              canRequestCorrections={isAdmin && Boolean(application.owner_username)}
               onDecided={() => void load(true)}
             />}
           <ApplicationInfo application={application} />
@@ -304,6 +306,7 @@ function FieldRow({ field, canReview, busy, onReview }: { field: FieldExtraction
   return <article className={`field-item ${completed ? "field-done" : "field-pending"}`}>
     <div className="field-head"><div><strong>{humanize(field.field_name)}</strong><span className={`confidence confidence-${percent >= 80 ? "high" : percent >= 55 ? "medium" : "low"}`}>{percent}% confidence{percent < 55 ? " · low" : ""}</span></div><span className={`review-state ${completed ? "reviewed" : "needs-review"}`}>{completed ? <><Check size={13} /> Reviewed</> : <><AlertCircle size={13} /> Review needed</>}</span></div>
     {field.raw_ocr_text && <p className="source-text">Extracted from: “{field.raw_ocr_text}”</p>}
+    {field.source_page !== null && <p className="finding-rule">Source page: {field.source_page}</p>}
     <div className="field-match-details">
       <span>Label match (TF-IDF): {labelMatchPercent}%</span>
       {field.expected_value !== null && metadataMatchPercent !== null && <span>
@@ -373,7 +376,7 @@ function FindingsSection({
   </section>;
 }
 
-function DecisionSection({ review, blockers, onDecided }: { review: ApplicationReview; blockers: string[] | null; onDecided: () => void }) {
+function DecisionSection({ review, blockers, canRequestCorrections, onDecided }: { review: ApplicationReview; blockers: string[] | null; canRequestCorrections: boolean; onDecided: () => void }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -385,6 +388,10 @@ function DecisionSection({ review, blockers, onDecided }: { review: ApplicationR
     && !blockers.some((reason) => reason.includes("still processing."));
 
   async function decide(decision: "approve" | "reject") {
+    if (decision === "reject" && !note.trim()) {
+      setError("A rejection reason is required.");
+      return;
+    }
     const overrideBlockers = decision === "approve" && reasons.length > 0;
     const confirmation = decision === "approve" && overrideBlockers
       ? `Overall match score: ${matchSummary.score}% (recommendation threshold: above ${matchSummary.threshold}%).\n\nOverride ${reasons.length} approval blocker(s) and approve anyway? This override will be recorded in the audit trail.\n\n${reasons.join("\n")}`
@@ -398,7 +405,7 @@ function DecisionSection({ review, blockers, onDecided }: { review: ApplicationR
       await api.decide(
         application.id,
         decision,
-        note.trim() || undefined,
+        note.trim(),
         overrideBlockers,
       );
       onDecided();
@@ -409,17 +416,50 @@ function DecisionSection({ review, blockers, onDecided }: { review: ApplicationR
     }
   }
 
+  async function requestCorrections() {
+    if (note.trim().length < 8) {
+      setError("Enter at least 8 characters describing the corrections required.");
+      return;
+    }
+    if (!window.confirm("Return this application to the institution for corrections?")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.requestCorrections(application.id, note.trim());
+      onDecided();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Correction request could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return <section className="panel decision-panel">
     <div className="panel-heading"><div><h3>Officer decision</h3><p>Final decision is recorded in the audit trail.</p></div></div>
     <div className="decision-body">
       <MatchSummaryCard matchSummary={matchSummary} />
       {finalized ? <div className={`decision-record decision-${application.status}`}><span>{application.status === "approved" ? <CheckCircle2 size={19} /> : <XCircle size={19} />}</span><div><strong>Application {application.status}</strong><p>This case has a final decision and is read-only.</p></div></div> : <>
-        <label className="decision-note">Decision note <textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={2000} placeholder="Add context for this decision (optional)" /></label>
+        <label className="decision-note">Decision note / correction reason <textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={2000} placeholder="Required for rejection or correction requests" /></label>
         {reasons.length > 0 && <div className="decision-checklist"><strong>Approval checklist</strong>{reasons.map((reason) => <p key={reason}><AlertCircle size={14} />{reason}</p>)}</div>}
         {error && <div className="inline-error"><AlertCircle size={15} />{error}</div>}
-        <div className="decision-buttons"><button className="button button-reject" disabled={busy} onClick={() => void decide("reject")}><XCircle size={15} /> Reject</button><button className="button button-primary" disabled={busy || !canOverrideBlockers} onClick={() => void decide("approve")}><CheckCircle2 size={15} /> {busy ? "Saving…" : "Approve"}</button></div>
+        <div className="decision-buttons">{canRequestCorrections && <button className="button button-secondary" disabled={busy || note.trim().length < 8} onClick={() => void requestCorrections()}>Request corrections</button>}<button className="button button-reject" disabled={busy || !note.trim()} onClick={() => void decide("reject")}><XCircle size={15} /> Reject</button><button className="button button-primary" disabled={busy || !canOverrideBlockers} onClick={() => void decide("approve")}><CheckCircle2 size={15} /> {busy ? "Saving…" : "Approve"}</button></div>
         <p className="decision-footnote">{reasons.length ? "Approval is available once active document processing finishes. Other blockers can be overridden after explicit confirmation; the override is recorded in the audit trail." : "Approval checks are clear. The final decision will be recorded in the audit trail."}</p>
       </>}
+    </div>
+  </section>;
+}
+
+function ComplianceSummaryCard({ summary }: { summary: ApplicationReview["compliance_summary"] }) {
+  return <section className="panel">
+    <div className="panel-heading"><div><h3>Compliance score</h3><p>Explainable advisory score; a reviewer makes the final decision.</p></div></div>
+    <div className="decision-body">
+      <div className="compliance-score"><strong>{summary.score}%</strong><span>{humanize(summary.recommendation)} · approval threshold {summary.threshold}%</span></div>
+      <div className="compliance-categories">{Object.entries(summary.categories).map(([name, score]) => <div key={name}><span>{humanize(name)}</span><strong>{score}%</strong></div>)}</div>
+      {summary.missing_fields.length > 0 && <div className="decision-checklist"><strong>Fields not found</strong>{summary.missing_fields.map((field) => <p key={field}><AlertCircle size={14} />{humanize(field)}</p>)}</div>}
+      {summary.missing_documents.length > 0 && <div className="decision-checklist"><strong>Required evidence not complete</strong>{summary.missing_documents.map((document) => <p key={document.document_type}><AlertCircle size={14} />{document.label}</p>)}</div>}
+      {summary.failed_mandatory_rules.length > 0 && <div className="decision-checklist"><strong>Mandatory rule failures</strong>{summary.failed_mandatory_rules.map((failure) => <p key={failure.rule_id}><AlertCircle size={14} />{failure.message}</p>)}</div>}
+      <div className="compliance-field-list"><strong>Metadata field comparisons</strong>{summary.field_scores.map((field) => <div key={field.field_name}><span>{humanize(field.field_name)} · {field.score}%</span><small>Expected: {field.expected_value ?? "Not specified"} · Extracted: {field.extracted_values.filter(Boolean).join(", ") || "Not found"}{field.sources.some((source) => source.page !== null) ? ` · page(s) ${field.sources.map((source) => source.page).filter((page): page is number => page !== null).join(", ")}` : ""}</small></div>)}</div>
+      {summary.warnings.map((warning) => <p className="decision-footnote" key={warning}>{warning}</p>)}
     </div>
   </section>;
 }

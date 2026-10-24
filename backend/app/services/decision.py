@@ -15,7 +15,6 @@ def approval_blockers(db: Session, application_id: str) -> list[str]:
     )
     if not documents:
         blockers.append("Upload at least one supporting PDF before approval.")
-
     pending_documents = [
         document
         for document in documents

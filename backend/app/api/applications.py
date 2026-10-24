@@ -27,6 +27,7 @@ from app.services.audit import append_audit
 from app.services.extraction import overall_metadata_match_score
 from app.services.pipeline import process_document
 from app.services.security import get_current_user, has_role, require_role
+from app.services.scoring import calculate_compliance_score
 from app.services.storage import delete_document, read_document_bytes, save_pdf
 from app.services.validation import get_pdf_page_count, load_rules, regulatory_findings
 
@@ -289,7 +290,12 @@ def submit_application(
     )
     if application is None or application.owner_username != user.username:
         raise HTTPException(status_code=404, detail="Application not found.")
-    if application.status not in {"draft", "processing", "review_required"}:
+    if application.status not in {
+        "draft",
+        "processing",
+        "review_required",
+        "corrections_requested",
+    }:
         raise HTTPException(status_code=409, detail="This application cannot be submitted in its current status.")
     if not application.documents:
         raise HTTPException(status_code=409, detail="Upload supporting documents before submitting.")
@@ -338,6 +344,7 @@ def get_decision_report(
         for document in application.documents
         for extraction in document.extractions
     ]
+    rules = load_rules(db, application.academic_year)
     return {
         "application_number": application.application_number,
         "institution_id": application.institution_id,
@@ -349,6 +356,13 @@ def get_decision_report(
         "decided_by": application.decided_by,
         "decided_at": application.decided_at,
         "match_summary": overall_metadata_match_score(application, extractions),
+        "compliance_summary": calculate_compliance_score(
+            application,
+            application.documents,
+            extractions,
+            application.findings,
+            rules,
+        ),
         "documents": application.documents,
         "findings": application.findings,
     }

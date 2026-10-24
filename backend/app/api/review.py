@@ -9,6 +9,7 @@ from app.models import Application, AuditEntry, Document, FieldExtraction, Findi
 from app.schemas import (
     ApplicationDetail,
     AuditOut,
+    CorrectionsRequest,
     DecisionRequest,
     ExtractionOut,
     FieldReviewRequest,
@@ -23,7 +24,9 @@ from app.services.extraction import (
     overall_metadata_match_score,
     value_match_score,
 )
+from app.services.scoring import calculate_compliance_score
 from app.services.security import get_current_user, has_role, require_role
+from app.services.validation import load_rules
 
 router = APIRouter(tags=["review"])
 
@@ -175,6 +178,13 @@ def get_review(
         "extractions": extraction_results,
         "findings": [FindingOut.model_validate(finding) for finding in application.findings],
         "match_summary": overall_metadata_match_score(application, extractions),
+        "compliance_summary": calculate_compliance_score(
+            application,
+            application.documents,
+            extractions,
+            application.findings,
+            load_rules(db, application.academic_year),
+        ),
     }
 
 
@@ -305,6 +315,7 @@ def decide_application(
         require_role(user, "admin", "officer")
     if application.status in {"approved", "rejected"}:
         raise HTTPException(status_code=409, detail="A decision has already been recorded.")
+    previous_status = application.status
     blockers: list[str] = []
     match_summary: dict[str, int | str] = {}
     if payload.decision == "approve":
@@ -345,9 +356,55 @@ def decide_application(
         entity_id=application.id,
         details={
             "note": payload.note,
+            "previous_status": previous_status,
+            "new_status": application.status,
             "override_blockers": payload.override_blockers,
             "overridden_blockers": blockers if payload.override_blockers else [],
             **({"match_summary": match_summary} if payload.decision == "approve" else {}),
+        },
+    )
+    db.commit()
+    db.refresh(application)
+    return application
+
+
+@router.post("/applications/{application_id}/corrections", response_model=ApplicationDetail)
+def request_application_corrections(
+    application_id: str,
+    payload: CorrectionsRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Application:
+    application = db.get(Application, application_id)
+    if application is None:
+        raise HTTPException(status_code=404, detail="Application not found.")
+    if application.owner_username is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Corrections can only be requested for institution-owned applications.",
+        )
+    require_role(user, "admin")
+    if application.status != "pending_admin_review":
+        raise HTTPException(
+            status_code=409,
+            detail="Institution applications must be submitted before corrections can be requested.",
+        )
+    if application.status in {"approved", "rejected"}:
+        raise HTTPException(status_code=409, detail="A final decision has already been recorded.")
+
+    previous_status = application.status
+    application.status = "corrections_requested"
+    application.decision_note = payload.note
+    append_audit(
+        db,
+        actor=user.username,
+        action="application.corrections_requested",
+        entity_type="application",
+        entity_id=application.id,
+        details={
+            "note": payload.note,
+            "previous_status": previous_status,
+            "new_status": application.status,
         },
     )
     db.commit()

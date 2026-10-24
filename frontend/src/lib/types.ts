@@ -182,6 +182,7 @@ export interface FieldExtraction {
   requires_review: boolean;
   reviewed_value: string | null;
   review_action: "confirm" | "correct" | "flag" | null;
+  source_page: number | null;
 }
 
 export interface Finding {
@@ -196,6 +197,26 @@ export interface Finding {
   status: "open" | "resolved" | "dismissed";
   details: Record<string, unknown>;
   created_at: string;
+}
+
+export interface ComplianceSummary {
+  score: number;
+  status: "needs_review" | "scored";
+  recommendation: "needs_review" | "approve" | "reject";
+  threshold: number;
+  weights: Record<string, number>;
+  categories: Record<string, number>;
+  field_scores: Array<{
+    field_name: string;
+    expected_value: string | null;
+    extracted_values: Array<string | null>;
+    score: number;
+    sources: Array<{ document_id: string | null; page: number | null }>;
+  }>;
+  missing_fields: string[];
+  missing_documents: Array<{ document_type: string; label: string }>;
+  failed_mandatory_rules: Array<{ rule_id: string; message: string; severity: string }>;
+  warnings: string[];
 }
 
 export interface ApplicationReview {
@@ -216,6 +237,7 @@ export interface ApplicationReview {
     threshold: number;
     recommendation: "approve" | "reject";
   };
+  compliance_summary: ComplianceSummary;
 }
 
 export interface ApplicationDecisionReport {
@@ -229,6 +251,7 @@ export interface ApplicationDecisionReport {
   decided_by: string;
   decided_at: string;
   match_summary: Record<string, number | string>;
+  compliance_summary: ComplianceSummary;
   documents: DocumentRecord[];
   findings: Finding[];
 }

@@ -53,6 +53,18 @@ export default function ApplicationDecisionReportPage() {
           </div>
         </section>
         <section className="decision-report-section">
+          <h2>Compliance assessment</h2>
+          <p><strong>{report.compliance_summary.score}%</strong> · {humanize(report.compliance_summary.recommendation)} · advisory only</p>
+          <div className="decision-report-grid">
+            {Object.entries(report.compliance_summary.categories).map(([key, value]) => (
+              <div key={key}><span>{humanize(key)}</span><strong>{value}%</strong></div>
+            ))}
+          </div>
+          {report.compliance_summary.missing_documents.length > 0 && <><h3>Missing supporting documents</h3><ul>{report.compliance_summary.missing_documents.map((item) => <li key={item.document_type}>{item.label}</li>)}</ul></>}
+          {report.compliance_summary.missing_fields.length > 0 && <><h3>Fields not extracted</h3><ul>{report.compliance_summary.missing_fields.map((item) => <li key={item}>{humanize(item)}</li>)}</ul></>}
+          {report.compliance_summary.failed_mandatory_rules.length > 0 && <><h3>Mandatory rule failures</h3><ul>{report.compliance_summary.failed_mandatory_rules.map((item) => <li key={item.rule_id}>{item.message}</li>)}</ul></>}
+        </section>
+        <section className="decision-report-section">
           <h2>Evidence reviewed ({report.documents.length})</h2>
           {report.documents.length ? <ul>{report.documents.map((document) => <li key={document.id}><strong>{document.filename}</strong><span>{humanize(document.document_type)} · {humanize(document.status)}</span></li>)}</ul> : <p>No supporting documents were recorded.</p>}
         </section>

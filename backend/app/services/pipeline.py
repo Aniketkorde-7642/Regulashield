@@ -69,6 +69,48 @@ def process_document(document_id: str) -> None:
         extraction = extract_pdf_document(pdf_bytes)
         raw_text = extraction.raw_text
         page_count = extraction.page_count
+        if not raw_text:
+            message = (
+                "No readable text was extracted from this PDF. Verify that the "
+                "pages are legible and that OCR supports their language."
+            )
+            document.status = "failed"
+            document.processing_error = message
+            application.status = "review_required"
+            if extraction.unreadable_scanned_pages:
+                _save_findings(
+                    db,
+                    application.id,
+                    [
+                        {
+                            "rule_id": "extraction.scanned_pdf_no_ocr",
+                            "category": "extraction",
+                            "severity": "high",
+                            "message": message,
+                            "expected": "Readable text on each scanned page.",
+                            "actual": "OCR did not recognize readable text.",
+                            "details": {
+                                "scanned_pages": extraction.scanned_pages,
+                                "ocr_pages": extraction.ocr_pages,
+                                "ocr_used_pages": extraction.ocr_used_pages,
+                                "unreadable_scanned_pages": (
+                                    extraction.unreadable_scanned_pages
+                                ),
+                            },
+                        }
+                    ],
+                    document_id=document.id,
+                )
+            append_audit(
+                db,
+                actor="system",
+                action="document.processing_failed",
+                entity_type="document",
+                entity_id=document.id,
+                details={"error": message, "stage": "text_extraction"},
+            )
+            db.commit()
+            return
         document.raw_text = raw_text
         document.page_count = page_count
         document.extractions.clear()
@@ -76,6 +118,7 @@ def process_document(document_id: str) -> None:
             raw_text,
             config.FIELD_CONFIDENCE_THRESHOLD,
             ocr_used=extraction.ocr_used_pages > 0,
+            page_texts=extraction.page_texts,
         ):
             metadata_score = value_match_score(
                 field["extracted_value"],

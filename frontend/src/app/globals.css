@@ -341,6 +341,7 @@ h1, h2, h3, p { margin-top: 0; }
 .login-role.selected { box-shadow: inset 3px 0 #596bc3; }
 .login-role-label { font-size: 11px; font-weight: 700; line-height: 1.4; }
 .login-role-description { color: #818ca0; font-size: 9px; line-height: 1.45; }
+.login-role-demo-password { color: #3547ad; font-size: 10px; font-weight: 700; line-height: 1.45; }
 .login-role-username { margin-top: 2px; color: #778399; font-size: 9px; }
 .login-role-username strong { color: #48556c; font-family: Consolas, monospace; font-weight: 700; }
 .login-form { display: grid; gap: 8px; }

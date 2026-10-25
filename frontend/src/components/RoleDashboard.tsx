@@ -78,7 +78,7 @@ function ScrutinyOfficerDashboard() {
   );
 
   async function decideApplication(application: ApplicationSummary, decision: "approve" | "reject") {
-    if (application.status !== "pending_admin_review") return;
+    if (!["pending_admin_review", "review_required"].includes(application.status)) return;
 
     let note = "";
     if (decision === "reject") {
@@ -94,18 +94,24 @@ function ScrutinyOfficerDashboard() {
     setDecisionBusyId(application.id);
     setDecisionError(null);
     try {
+      let overrideBlockers = false;
       if (decision === "approve") {
         const { blockers } = await api.blockers(application.id);
-        if (blockers.length > 0) {
-          window.alert(`This application cannot be approved yet:\n\n${blockers.join("\n")}\n\nOpen the application to review evidence and blockers.`);
+        const processingBlocker = blockers.some((blocker) => blocker.endsWith("document(s) are still processing."));
+        if (processingBlocker) {
+          window.alert(`This application cannot be approved while documents are processing:\n\n${blockers.join("\n")}`);
           return;
         }
-        if (!window.confirm(`Approve ${application.application_number}?`)) return;
+        overrideBlockers = blockers.length > 0;
+        const confirmation = blockers.length > 0
+          ? `Approval blockers:\n\n${blockers.join("\n")}\n\nOverride these blockers and approve ${application.application_number}? The override will be recorded in the audit trail.`
+          : `Approve ${application.application_number}?`;
+        if (!window.confirm(confirmation)) return;
       } else if (!window.confirm(`Reject ${application.application_number}?\n\nReason: ${note}`)) {
         return;
       }
 
-      await api.decide(application.id, decision, note);
+      await api.decide(application.id, decision, note, overrideBlockers);
       refresh();
     } catch (reason) {
       setDecisionError(reason instanceof Error ? reason.message : "The application decision could not be saved.");
@@ -137,13 +143,13 @@ function ScrutinyOfficerDashboard() {
               <Link className={application.status === "pending_admin_review" ? "button button-secondary compact" : "table-link"} href={`/applications/${application.id}`}>
                 {application.status === "pending_admin_review" ? "Review application" : "Review extracted fields and evidence"} <ArrowRight size={14} />
               </Link>
-              <button className="button button-primary compact" disabled={application.status !== "pending_admin_review" || decisionBusyId !== null || busy} onClick={() => void decideApplication(application, "approve")}>
+              <button className="button button-primary compact" disabled={!["pending_admin_review", "review_required"].includes(application.status) || decisionBusyId !== null || busy} onClick={() => void decideApplication(application, "approve")}>
                 <CheckCircle2 size={14} /> {decisionBusyId === application.id ? "Saving…" : "Approve"}
               </button>
-              <button className="button button-reject compact" disabled={application.status !== "pending_admin_review" || decisionBusyId !== null || busy} onClick={() => void decideApplication(application, "reject")}>
+              <button className="button button-reject compact" disabled={!["pending_admin_review", "review_required"].includes(application.status) || decisionBusyId !== null || busy} onClick={() => void decideApplication(application, "reject")}>
                 <XCircle size={14} /> Reject
               </button>
-              {application.status !== "pending_admin_review" && <span className="decision-footnote">Available after the institution finishes processing documents and submits for scrutiny.</span>}
+              {!["pending_admin_review", "review_required"].includes(application.status) && <span className="decision-footnote">Available after the institution submits the application for scrutiny.</span>}
             </div>
           </article>
         ))}</div>

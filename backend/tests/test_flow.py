@@ -1476,6 +1476,43 @@ def test_scrutiny_officer_can_approve_submitted_institution_application(
     assert decision.json()["decided_by"] == "officer"
 
 
+def test_scrutiny_officer_can_reject_institution_application_in_review_required(
+    client: TestClient,
+):
+    institution_headers = login_headers(client, "institution", "test-institution-password")
+    officer_headers = login_headers(client, "officer", "test-officer-password")
+    created = client.post(
+        "/api/applications",
+        headers=institution_headers,
+        json={
+            "application_number": "INST-REVIEW-REQUIRED-DECISION-001",
+            "institution_id": "INST-REVIEW-REQUIRED-DECISION",
+            "institution_name": "Review Required Decision College",
+            "category": "EOA",
+            "academic_year": "2026-27",
+            "declared_faculty": 10,
+            "declared_student_count": 200,
+            "declared_land_area": 1.5,
+        },
+    )
+    assert created.status_code == 201, created.text
+    application_id = created.json()["id"]
+    with SessionLocal() as db:
+        application = db.get(Application, application_id)
+        assert application is not None
+        application.status = "review_required"
+        db.commit()
+
+    decision = client.post(
+        f"/api/applications/{application_id}/decision",
+        headers=officer_headers,
+        json={"decision": "reject", "note": "Evidence could not be verified."},
+    )
+    assert decision.status_code == 200, decision.text
+    assert decision.json()["status"] == "rejected"
+    assert decision.json()["decided_by"] == "officer"
+
+
 def test_seeded_sample_decisions_are_visible_to_institution_and_officer(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

@@ -47,7 +47,7 @@ export function ApplicationReviewPage() {
       const applicationReview = await api.review(applicationId);
       const canDecideApplication = canDecideRole
         && (!applicationReview.application.owner_username
-          || (isOfficer && applicationReview.application.status === "pending_admin_review"));
+          || (isOfficer && ["pending_admin_review", "review_required"].includes(applicationReview.application.status)));
       const approvalCheck = canDecideApplication ? await api.blockers(applicationId) : null;
       setReview(applicationReview);
       setBlockers(approvalCheck?.blockers ?? null);
@@ -83,7 +83,7 @@ export function ApplicationReviewPage() {
   const finalized = application.status === "approved" || application.status === "rejected";
   const canDecide = canDecideRole
     && (!application.owner_username
-      || (isOfficer && application.status === "pending_admin_review"));
+      || (isOfficer && ["pending_admin_review", "review_required"].includes(application.status)));
   const canRequestCorrections = isAdmin
     && Boolean(application.owner_username)
     && application.status === "pending_admin_review";
@@ -141,7 +141,7 @@ export function ApplicationReviewPage() {
           <ComplianceSummaryCard summary={review.compliance_summary} />
           {isOfficer
             && application.owner_username
-            && application.status !== "pending_admin_review"
+            && !["pending_admin_review", "review_required"].includes(application.status)
             && !finalized
             && <section className="panel decision-panel">
               <div className="panel-heading"><div><h3>Officer decision</h3><p>Approval and rejection are available after the institution submits this application for scrutiny.</p></div></div>

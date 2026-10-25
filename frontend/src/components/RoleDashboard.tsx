@@ -45,6 +45,11 @@ const EMPTY_STATS: DashboardStats = {
   users: 0,
 };
 
+const SHARED_SAMPLE_APPLICATION_IDS = new Set([
+  "0085e1fd-c265-489b-9dcb-87cb09ba997f",
+  "a5830d40-8d56-4ffc-acc9-a5b91ddef6db",
+]);
+
 export function RoleDashboard({ role }: { role: string }) {
   if (["admin", "administrator", "system_administrator"].includes(role)) return <AdminDashboard />;
   if (["officer", "aicte_scrutiny_officer", "scrutiny_officer"].includes(role)) return <ScrutinyOfficerDashboard />;
@@ -62,7 +67,10 @@ function ScrutinyOfficerDashboard() {
     (application) => !["approved", "rejected"].includes(application.status),
   );
   const sampleDecisions = applications.filter(
-    (application) => application.application_number.startsWith("DEMO-SAMPLE-")
+    (application) => (
+      application.application_number.startsWith("DEMO-SAMPLE-")
+      || SHARED_SAMPLE_APPLICATION_IDS.has(application.id)
+    )
       && ["approved", "rejected"].includes(application.status),
   );
 
@@ -94,7 +102,7 @@ function ScrutinyOfficerDashboard() {
         <div className="finding-list">{sampleDecisions.map((application) => (
           <article className="institution-application" key={application.id}>
             <div className="institution-application-head"><div><strong>{application.institution_name}</strong><span className="mono">{application.application_number} · {application.academic_year}</span></div><StatusBadge status={application.status} /></div>
-            <div className="institution-application-meta"><span>Synthetic demonstration record</span><span>No supporting evidence attached</span></div>
+            <div className="institution-application-meta"><span>Synthetic sample application</span><span>{application.document_count} supporting file(s)</span></div>
             <Link className="table-link" href={`/applications/${application.id}`}>View sample decision <ArrowRight size={14} /></Link>
           </article>
         ))}</div>

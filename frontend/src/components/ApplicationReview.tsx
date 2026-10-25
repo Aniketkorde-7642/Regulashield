@@ -420,9 +420,16 @@ function DecisionSection({ review, blockers, canDecide, canRequestCorrections, o
     && !blockers.some((reason) => reason.includes("still processing."));
 
   async function decide(decision: "approve" | "reject") {
-    if (decision === "reject" && !note.trim()) {
-      setError("A rejection reason is required.");
-      return;
+    let decisionNote = note.trim();
+    if (decision === "reject" && !decisionNote) {
+      const rejectionReason = window.prompt("Enter the reason for rejecting this application.");
+      if (rejectionReason === null) return;
+      decisionNote = rejectionReason.trim();
+      if (!decisionNote) {
+        setError("A rejection reason is required.");
+        return;
+      }
+      setNote(decisionNote);
     }
     const overrideBlockers = decision === "approve" && reasons.length > 0;
     const confirmation = decision === "approve" && overrideBlockers
@@ -437,7 +444,7 @@ function DecisionSection({ review, blockers, canDecide, canRequestCorrections, o
       await api.decide(
         application.id,
         decision,
-        note.trim(),
+        decisionNote,
         overrideBlockers,
       );
       onDecided();
@@ -474,7 +481,7 @@ function DecisionSection({ review, blockers, canDecide, canRequestCorrections, o
         <label className="decision-note">{canDecide ? "Decision note / correction reason" : "Correction request reason"} <textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={2000} placeholder="Required for rejection or correction requests" /></label>
         {canDecide && reasons.length > 0 && <div className="decision-checklist"><strong>Approval checklist</strong>{reasons.map((reason) => <p key={reason}><AlertCircle size={14} />{reason}</p>)}</div>}
         {error && <div className="inline-error"><AlertCircle size={15} />{error}</div>}
-        <div className="decision-buttons">{canRequestCorrections && <button className="button button-secondary" disabled={busy || note.trim().length < 8} onClick={() => void requestCorrections()}>Request corrections</button>}{canDecide && <><button className="button button-reject" disabled={busy || !note.trim()} onClick={() => void decide("reject")}><XCircle size={15} /> Reject</button><button className="button button-primary" disabled={busy || !canOverrideBlockers} onClick={() => void decide("approve")}><CheckCircle2 size={15} /> {busy ? "Saving…" : "Approve"}</button></>}</div>
+        <div className="decision-buttons">{canRequestCorrections && <button className="button button-secondary" disabled={busy || note.trim().length < 8} onClick={() => void requestCorrections()}>Request corrections</button>}{canDecide && <><button className="button button-reject" disabled={busy} onClick={() => void decide("reject")}><XCircle size={15} /> Reject</button><button className="button button-primary" disabled={busy || !canOverrideBlockers} onClick={() => void decide("approve")}><CheckCircle2 size={15} /> {busy ? "Saving…" : "Approve"}</button></>}</div>
         {canDecide && <p className="decision-footnote">{reasons.length ? "Approval is available once active document processing finishes. Other blockers can be overridden after explicit confirmation; the override is recorded in the audit trail." : "Approval checks are clear. The final decision will be recorded in the audit trail."}</p>}
       </>}
     </div>

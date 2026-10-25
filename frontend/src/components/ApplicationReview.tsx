@@ -139,6 +139,20 @@ export function ApplicationReviewPage() {
         </div>
         <aside className="review-side-column">
           <ComplianceSummaryCard summary={review.compliance_summary} />
+          {isOfficer
+            && application.owner_username
+            && application.status !== "pending_admin_review"
+            && !finalized
+            && <section className="panel decision-panel">
+              <div className="panel-heading"><div><h3>Officer decision</h3><p>Approval and rejection are available after the institution submits this application for scrutiny.</p></div></div>
+              <div className="decision-body">
+                <div className="decision-buttons">
+                  <button className="button button-reject" disabled><XCircle size={15} /> Reject</button>
+                  <button className="button button-primary" disabled><CheckCircle2 size={15} /> Approve</button>
+                </div>
+                <p className="decision-footnote">Current status: {humanize(application.status)}. The institution must finish document processing and submit the application before a final decision can be recorded.</p>
+              </div>
+            </section>}
           {!canDecide && <section className="panel">
             <div className="panel-heading"><div><h3>Evidence match summary</h3><p>Advisory comparison of extracted values with your application details.</p></div></div>
             <MatchSummaryCard applicationId={application.id} matchSummary={review.match_summary} />

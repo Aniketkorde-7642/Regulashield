@@ -137,14 +137,13 @@ function ScrutinyOfficerDashboard() {
               <Link className={application.status === "pending_admin_review" ? "button button-secondary compact" : "table-link"} href={`/applications/${application.id}`}>
                 {application.status === "pending_admin_review" ? "Review application" : "Review extracted fields and evidence"} <ArrowRight size={14} />
               </Link>
-              {application.status === "pending_admin_review" && <>
-                <button className="button button-primary compact" disabled={decisionBusyId !== null || busy} onClick={() => void decideApplication(application, "approve")}>
-                  <CheckCircle2 size={14} /> {decisionBusyId === application.id ? "Saving…" : "Approve"}
-                </button>
-                <button className="button button-reject compact" disabled={decisionBusyId !== null || busy} onClick={() => void decideApplication(application, "reject")}>
-                  <XCircle size={14} /> Reject
-                </button>
-              </>}
+              <button className="button button-primary compact" disabled={application.status !== "pending_admin_review" || decisionBusyId !== null || busy} onClick={() => void decideApplication(application, "approve")}>
+                <CheckCircle2 size={14} /> {decisionBusyId === application.id ? "Saving…" : "Approve"}
+              </button>
+              <button className="button button-reject compact" disabled={application.status !== "pending_admin_review" || decisionBusyId !== null || busy} onClick={() => void decideApplication(application, "reject")}>
+                <XCircle size={14} /> Reject
+              </button>
+              {application.status !== "pending_admin_review" && <span className="decision-footnote">Available after the institution finishes processing documents and submits for scrutiny.</span>}
             </div>
           </article>
         ))}</div>

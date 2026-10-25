@@ -12,6 +12,7 @@ from app import config
 from app.api import applications as applications_api
 from app.db import SessionLocal
 from app.models import Application, Document, User
+from app.services.sample_applications import seed_sample_applications
 from app.services.security import bootstrap_users, demo_role_passwords
 
 
@@ -1166,7 +1167,7 @@ def test_institution_registration_waits_for_admin_approval(client: TestClient):
     ).status_code == 422
 
 
-def test_institution_submission_requires_admin_decision_and_generates_report(
+def test_institution_submission_allows_officer_decision_and_generates_report(
     client: TestClient,
 ):
     institution_headers = login_headers(client, "institution", "test-institution-password")
@@ -1229,9 +1230,14 @@ def test_institution_submission_requires_admin_decision_and_generates_report(
     assert client.get("/api/applications", headers=admin_headers).json()[0]["status"] == "pending_admin_review"
     assert client.post(
         f"/api/applications/{application_id}/decision",
-        headers=officer_headers,
-        json={"decision": "reject", "note": "Officer cannot issue institutional decisions."},
+        headers=admin_headers,
+        json={"decision": "reject", "note": "Administrator cannot issue the final decision."},
     ).status_code == 403
+    assert client.post(
+        f"/api/applications/{application_id}/decision",
+        headers=officer_headers,
+        json={"decision": "reject"},
+    ).status_code == 422
 
     corrections = client.post(
         f"/api/applications/{application_id}/corrections",
@@ -1261,11 +1267,11 @@ def test_institution_submission_requires_admin_decision_and_generates_report(
 
     decision = client.post(
         f"/api/applications/{application_id}/decision",
-        headers=admin_headers,
+        headers=officer_headers,
         json={"decision": "reject", "note": "Required evidence needs correction."},
     )
     assert decision.status_code == 200, decision.text
-    assert decision.json()["decided_by"] == "admin"
+    assert decision.json()["decided_by"] == "officer"
     report = client.get(
         f"/api/applications/{application_id}/decision-report",
         headers=institution_headers,
@@ -1367,6 +1373,7 @@ def test_institution_dashboard_is_scoped_and_can_correct_owned_drafts(client: Te
         headers=institution_headers,
         json={},
     ).status_code == 422
+
     assert client.post(
         f"/api/applications/{own_application['id']}/resubmissions",
         headers=institution_headers,
@@ -1412,6 +1419,104 @@ def test_institution_dashboard_is_scoped_and_can_correct_owned_drafts(client: Te
     }
     assert own_application["id"] in own_ids
     assert resubmission.json()["id"] in own_ids
+
+
+def test_scrutiny_officer_can_approve_submitted_institution_application(
+    client: TestClient,
+):
+    institution_headers = login_headers(client, "institution", "test-institution-password")
+    officer_headers = login_headers(client, "officer", "test-officer-password")
+    created = client.post(
+        "/api/applications",
+        headers=institution_headers,
+        json={
+            "application_number": "INST-OFFICER-APPROVAL-001",
+            "institution_id": "INST-OFFICER-APPROVAL",
+            "institution_name": "Scrutiny Approval College",
+            "category": "EOA",
+            "academic_year": "2026-27",
+            "declared_faculty": 18,
+            "declared_student_count": 450,
+            "declared_land_area": 3.2,
+        },
+    )
+    assert created.status_code == 201, created.text
+    application_id = created.json()["id"]
+
+    uploaded = client.post(
+        f"/api/applications/{application_id}/documents",
+        headers=institution_headers,
+        data={"document_type": "affiliation_letter"},
+        files={
+            "file": (
+                "scrutiny-approval.pdf",
+                make_pdf("Institution: Scrutiny Approval College"),
+                "application/pdf",
+            )
+        },
+    )
+    assert uploaded.status_code == 202, uploaded.text
+    submitted = client.post(
+        f"/api/applications/{application_id}/submit",
+        headers=institution_headers,
+    )
+    assert submitted.status_code == 200, submitted.text
+
+    decision = client.post(
+        f"/api/applications/{application_id}/decision",
+        headers=officer_headers,
+        json={
+            "decision": "approve",
+            "note": "Evidence reviewed by the AICTE Scrutiny Officer.",
+            "override_blockers": True,
+        },
+    )
+    assert decision.status_code == 200, decision.text
+    assert decision.json()["status"] == "approved"
+    assert decision.json()["decided_by"] == "officer"
+
+
+def test_seeded_sample_decisions_are_visible_to_institution_and_officer(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(config, "SAMPLE_APPLICATIONS_ENABLED", True)
+    with SessionLocal() as db:
+        seed_sample_applications(db)
+        seed_sample_applications(db)
+
+    institution_headers = login_headers(client, "institution", "test-institution-password")
+    officer_headers = login_headers(client, "officer", "test-officer-password")
+    expected = {
+        "DEMO-SAMPLE-APPROVED-2026": "approved",
+        "DEMO-SAMPLE-REJECTED-2026": "rejected",
+    }
+    institution_applications = client.get(
+        "/api/applications", headers=institution_headers
+    ).json()
+    officer_applications = client.get("/api/applications", headers=officer_headers).json()
+    for applications in (institution_applications, officer_applications):
+        sample_statuses = {
+            application["application_number"]: application["status"]
+            for application in applications
+            if application["application_number"] in expected
+        }
+        assert sample_statuses == expected
+
+    rejected_sample = next(
+        application
+        for application in institution_applications
+        if application["application_number"] == "DEMO-SAMPLE-REJECTED-2026"
+    )
+    assert client.post(
+        f"/api/applications/{rejected_sample['id']}/resubmissions",
+        headers=institution_headers,
+    ).status_code == 409
+
+    admin_headers = login_headers(client, "admin", "test-admin-password")
+    assert client.get("/api/security/overview", headers=admin_headers).json()[
+        "audit_integrity_ok"
+    ]
 
 
 def test_regulatory_officer_can_review_but_not_submit_or_decide(client: TestClient):

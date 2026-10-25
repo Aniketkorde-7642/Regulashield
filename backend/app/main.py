@@ -14,6 +14,7 @@ from app.api import api_router
 from app.db import Base, SessionLocal, engine
 from app import models  # noqa: F401
 from app.services.security import bootstrap_users
+from app.services.sample_applications import seed_sample_applications
 from app.services.validation import seed_rules
 
 logging.basicConfig(level=logging.INFO)
@@ -62,6 +63,7 @@ def initialize_database() -> None:
             with SessionLocal(bind=connection) as db:
                 bootstrap_users(db)
                 seed_rules(db)
+                seed_sample_applications(db)
         finally:
             if is_postgres:
                 if connection.in_transaction():

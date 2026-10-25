@@ -308,11 +308,11 @@ def decide_application(
     if application is None:
         raise HTTPException(status_code=404, detail="Application not found.")
     if application.owner_username is not None:
-        require_role(user, "admin")
+        require_role(user, "officer")
         if application.status != "pending_admin_review":
             raise HTTPException(
                 status_code=409,
-                detail="Institution applications must be submitted before an administrator can decide them.",
+                detail="Institution applications must be submitted before an AICTE Scrutiny Officer can decide them.",
             )
     else:
         require_role(user, "admin", "officer")

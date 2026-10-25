@@ -104,7 +104,7 @@ function ApplicationsPage() {
         <div className="panel-heading"><div><h3>Application register</h3><p>Search and open a case to review evidence and findings.</p></div><span className="record-count">{visibleApplications.length} records</span></div>
         <div className="toolbar">
           <label className="search-field"><Search size={16} /><input aria-label="Search applications" placeholder="Search number, institution or ID" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
-          <label className="filter-field"><span>Status</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All statuses</option><option value="draft">Draft</option><option value="processing">Processing</option><option value="review_required">Review required</option><option value="pending_admin_review">Pending administrator review</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select></label>
+          <label className="filter-field"><span>Status</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All statuses</option><option value="draft">Draft</option><option value="processing">Processing</option><option value="review_required">Review required</option><option value="pending_admin_review">Pending scrutiny decision</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select></label>
         </div>
         <div className="table-scroll"><table className="data-table"><thead><tr><th>Application</th><th>Institution</th><th>Category / year</th><th>Evidence</th><th>Status</th><th>Created</th><th /></tr></thead>
           <tbody>

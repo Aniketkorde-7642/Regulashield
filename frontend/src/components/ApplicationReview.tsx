@@ -30,7 +30,8 @@ export function ApplicationReviewPage() {
   const applicationId = params.id;
   const role = user?.role.trim().toLowerCase().replaceAll(" ", "_") ?? "";
   const isAdmin = ["admin", "administrator", "system_administrator"].includes(role);
-  const canDecideRole = isAdmin || ["officer", "aicte_scrutiny_officer", "scrutiny_officer"].includes(role);
+  const isOfficer = ["officer", "aicte_scrutiny_officer", "scrutiny_officer"].includes(role);
+  const canDecideRole = isAdmin || isOfficer;
   const canReview = ["admin", "administrator", "system_administrator", "officer", "aicte_scrutiny_officer", "scrutiny_officer", "regulatory_officer", "regulatory", "verification_officer", "compliance_admin", "compliance_administrator", "regulatory_compliance_administrator"].includes(role);
   const canUpload = canDecideRole || role === "institution" || role === "institution_login";
   const [review, setReview] = useState<ApplicationReview | null>(null);
@@ -45,7 +46,8 @@ export function ApplicationReviewPage() {
     try {
       const applicationReview = await api.review(applicationId);
       const canDecideApplication = canDecideRole
-        && (isAdmin || !applicationReview.application.owner_username);
+        && (!applicationReview.application.owner_username
+          || (isOfficer && applicationReview.application.status === "pending_admin_review"));
       const approvalCheck = canDecideApplication ? await api.blockers(applicationId) : null;
       setReview(applicationReview);
       setBlockers(approvalCheck?.blockers ?? null);
@@ -55,7 +57,7 @@ export function ApplicationReviewPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [applicationId, canDecideRole, isAdmin]);
+  }, [applicationId, canDecideRole, isOfficer]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -79,7 +81,12 @@ export function ApplicationReviewPage() {
 
   const application = review.application;
   const finalized = application.status === "approved" || application.status === "rejected";
-  const canDecide = canDecideRole && (isAdmin || !application.owner_username);
+  const canDecide = canDecideRole
+    && (!application.owner_username
+      || (isOfficer && application.status === "pending_admin_review"));
+  const canRequestCorrections = isAdmin
+    && Boolean(application.owner_username)
+    && application.status === "pending_admin_review";
   const canEditEvidence = canUpload && !finalized
     && !(application.owner_username && application.status === "pending_admin_review");
   const openHighFindings = review.findings.filter((finding) => finding.severity === "high" && finding.status === "open").length;
@@ -105,7 +112,7 @@ export function ApplicationReviewPage() {
         <span className="workflow-line" />
         <WorkflowStep icon={hasProcessingDocument ? <LoaderCircle size={16} /> : <CheckCircle2 size={16} />} label={hasProcessingDocument ? "Processing" : "Evidence review"} complete={!hasProcessingDocument && application.documents.length > 0} active={hasProcessingDocument} />
         <span className="workflow-line" />
-        <WorkflowStep icon={<ShieldCheck size={16} />} label={application.owner_username ? "Administrator decision" : "Officer decision"} complete={finalized} active={!finalized && !hasProcessingDocument} />
+        <WorkflowStep icon={<ShieldCheck size={16} />} label={application.owner_username ? "AICTE Scrutiny Officer decision" : "Officer decision"} complete={finalized} active={!finalized && !hasProcessingDocument} />
       </div>
 
       <div className="review-summary">
@@ -141,16 +148,17 @@ export function ApplicationReviewPage() {
             canResolve={canReview}
             onChanged={() => void load(true)}
           />
-          {canDecide && <DecisionSection
+          {(canDecide || canRequestCorrections) && <DecisionSection
               review={review}
               blockers={blockers}
-              canRequestCorrections={isAdmin && Boolean(application.owner_username)}
+              canDecide={canDecide}
+              canRequestCorrections={canRequestCorrections}
               onDecided={() => void load(true)}
             />}
           <ApplicationInfo application={application} />
         </aside>
       </div>
-      {!finalized && application.owner_username && application.status === "pending_admin_review" && <div className="notice"><AlertTriangle size={17} /><span>Submitted and awaiting a final System Administrator decision.</span></div>}
+      {!finalized && application.owner_username && application.status === "pending_admin_review" && <div className="notice"><AlertTriangle size={17} /><span>Submitted and awaiting a final AICTE Scrutiny Officer decision.</span></div>}
     </>
   );
 }
@@ -385,15 +393,16 @@ function FindingsSection({
   </section>;
 }
 
-function DecisionSection({ review, blockers, canRequestCorrections, onDecided }: { review: ApplicationReview; blockers: string[] | null; canRequestCorrections: boolean; onDecided: () => void }) {
+function DecisionSection({ review, blockers, canDecide, canRequestCorrections, onDecided }: { review: ApplicationReview; blockers: string[] | null; canDecide: boolean; canRequestCorrections: boolean; onDecided: () => void }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const application = review.application;
   const finalized = application.status === "approved" || application.status === "rejected";
-  const reasons = blockers ?? ["Approval checks have not loaded. Refresh before approving."];
+  const reasons = blockers ?? [];
   const matchSummary = review.match_summary;
-  const canOverrideBlockers = blockers !== null
+  const canOverrideBlockers = canDecide
+    && blockers !== null
     && !blockers.some((reason) => reason.includes("still processing."));
 
   async function decide(decision: "approve" | "reject") {
@@ -444,15 +453,15 @@ function DecisionSection({ review, blockers, canRequestCorrections, onDecided }:
   }
 
   return <section className="panel decision-panel">
-    <div className="panel-heading"><div><h3>Officer decision</h3><p>Final decision is recorded in the audit trail.</p></div></div>
+    <div className="panel-heading"><div><h3>{canDecide ? "Officer decision" : "Request institution corrections"}</h3><p>{canDecide ? "Final decision is recorded in the audit trail." : "Return the submitted application to the institution with a clear correction request."}</p></div></div>
     <div className="decision-body">
-      <MatchSummaryCard matchSummary={matchSummary} />
+      {canDecide && <MatchSummaryCard matchSummary={matchSummary} />}
       {finalized ? <div className={`decision-record decision-${application.status}`}><span>{application.status === "approved" ? <CheckCircle2 size={19} /> : <XCircle size={19} />}</span><div><strong>Application {application.status}</strong><p>This case has a final decision and is read-only.</p></div></div> : <>
-        <label className="decision-note">Decision note / correction reason <textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={2000} placeholder="Required for rejection or correction requests" /></label>
-        {reasons.length > 0 && <div className="decision-checklist"><strong>Approval checklist</strong>{reasons.map((reason) => <p key={reason}><AlertCircle size={14} />{reason}</p>)}</div>}
+        <label className="decision-note">{canDecide ? "Decision note / correction reason" : "Correction request reason"} <textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={2000} placeholder="Required for rejection or correction requests" /></label>
+        {canDecide && reasons.length > 0 && <div className="decision-checklist"><strong>Approval checklist</strong>{reasons.map((reason) => <p key={reason}><AlertCircle size={14} />{reason}</p>)}</div>}
         {error && <div className="inline-error"><AlertCircle size={15} />{error}</div>}
-        <div className="decision-buttons">{canRequestCorrections && <button className="button button-secondary" disabled={busy || note.trim().length < 8} onClick={() => void requestCorrections()}>Request corrections</button>}<button className="button button-reject" disabled={busy || !note.trim()} onClick={() => void decide("reject")}><XCircle size={15} /> Reject</button><button className="button button-primary" disabled={busy || !canOverrideBlockers} onClick={() => void decide("approve")}><CheckCircle2 size={15} /> {busy ? "Saving…" : "Approve"}</button></div>
-        <p className="decision-footnote">{reasons.length ? "Approval is available once active document processing finishes. Other blockers can be overridden after explicit confirmation; the override is recorded in the audit trail." : "Approval checks are clear. The final decision will be recorded in the audit trail."}</p>
+        <div className="decision-buttons">{canRequestCorrections && <button className="button button-secondary" disabled={busy || note.trim().length < 8} onClick={() => void requestCorrections()}>Request corrections</button>}{canDecide && <><button className="button button-reject" disabled={busy || !note.trim()} onClick={() => void decide("reject")}><XCircle size={15} /> Reject</button><button className="button button-primary" disabled={busy || !canOverrideBlockers} onClick={() => void decide("approve")}><CheckCircle2 size={15} /> {busy ? "Saving…" : "Approve"}</button></>}</div>
+        {canDecide && <p className="decision-footnote">{reasons.length ? "Approval is available once active document processing finishes. Other blockers can be overridden after explicit confirmation; the override is recorded in the audit trail." : "Approval checks are clear. The final decision will be recorded in the audit trail."}</p>}
       </>}
     </div>
   </section>;

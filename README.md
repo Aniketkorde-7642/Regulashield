@@ -8,8 +8,10 @@ A local-first document review workflow for synthetic academic compliance applica
 4. Run explainable rule, cross-document, duplicate, and mock-issuer checks.
 5. Review extracted fields and findings.
 6. Confirm required evidence fields and resolve high-severity findings before approval.
-7. Submit the completed application for a System Administrator decision.
-8. Request corrections or record an approval/rejection in a hash-linked audit trail and provide the institution with a decision report.
+7. Submit the completed application to the AICTE Scrutiny Officer queue for a final decision.
+8. A System Administrator may request corrections; the Scrutiny Officer records
+   the final approval/rejection in a hash-linked audit trail, and the institution
+   receives a decision report.
 
 This is a demonstration system. Rules and issuer checks are synthetic and must not
 be used to make real accreditation decisions.
@@ -60,16 +62,17 @@ rules, and submit proposals for independent System Administrator approval.
 Approvals publish immutable new versions; prior versions and previously
 recorded evaluation findings remain unchanged. Rule drafts, source attestations,
 simulations, submissions, approvals, and rejections are recorded in the audit
-trail. The AICTE Scrutiny Officer may review applications but cannot create new
+trail. The AICTE Scrutiny Officer may review applications and make final
+decisions on submitted institution applications, but cannot create new
 applications.
 Institutions can run an advisory metadata pre-check before creating an
 application, edit their own draft details, upload typed evidence, and view
 missing-document and validation guidance. After all uploaded documents finish
-processing, an institution submits the application into the System
-Administrator decision queue. If corrections are requested, the institution
-can edit its details or evidence and resubmit. Other submitted applications
-remain locked against institution edits; AICTE Scrutiny Officers cannot issue
-final decisions on institution-owned applications.
+processing, an institution submits the application into the AICTE Scrutiny
+Officer decision queue. If corrections are requested by a System Administrator,
+the institution can edit its details or evidence and resubmit. Other submitted
+applications remain locked against institution edits until a decision is
+recorded.
 After approval or rejection, the institution receives an owner-scoped decision
 report with the outcome, note, decision maker/date, score summary, evidence,
 and findings; the report can be printed or saved as PDF. A rejected application
@@ -279,6 +282,11 @@ environment variables for Production and Preview:
 - `DOCUMENT_STORAGE=vercel_blob`.
 - `DEMO_MODE=false`.
 - `NEXT_PUBLIC_BLOB_UPLOADS=true`.
+- `SAMPLE_APPLICATIONS_ENABLED=true` only when the production project is being
+  used for a demonstration. This creates two clearly labeled synthetic outcome
+  examples under the seeded `institution` account: one approved and one
+  rejected. They contain no evidence, are not official AICTE decisions, and are
+  visible in the institution account and AICTE Scrutiny Officer dashboard.
 
 Optional bootstrap role passwords are `OFFICER_PASSWORD`,
 `REGULATORY_PASSWORD`, `COMPLIANCE_ADMIN_PASSWORD`, and

@@ -61,19 +61,23 @@ function ScrutinyOfficerDashboard() {
   const reviewableApplications = applications.filter(
     (application) => !["approved", "rejected"].includes(application.status),
   );
+  const sampleDecisions = applications.filter(
+    (application) => application.application_number.startsWith("DEMO-SAMPLE-")
+      && ["approved", "rejected"].includes(application.status),
+  );
 
   return (
     <>
       <DashboardHeader
         eyebrow="AICTE SCRUTINY"
         title="Application review queue"
-        description="Review extracted evidence, confirm text, mark absent fields, flag follow-ups, and record decisions for applications assigned to officer review."
+        description="Review submitted institution applications, verify evidence, resolve findings, and record the final AICTE scrutiny decision."
         actions={<button className="button button-secondary" onClick={refresh} disabled={busy}><RefreshCw size={15} className={busy ? "spin" : ""} /> Refresh</button>}
       />
       <DashboardError error={error} />
       <MetricCards stats={stats} />
       <section className="panel">
-        <div className="panel-heading"><div><h3>Applications awaiting review</h3><p>Institution applications are reviewed here but require a System Administrator for the final decision.</p></div><span className="record-count">{reviewableApplications.length} open</span></div>
+        <div className="panel-heading"><div><h3>Applications awaiting review</h3><p>Submitted institution applications are ready for an AICTE Scrutiny Officer's final decision.</p></div><span className="record-count">{reviewableApplications.length} open</span></div>
         {loading && <div className="table-state"><span className="spinner" /> Loading applications…</div>}
         {!loading && reviewableApplications.length === 0 && <div className="section-empty"><Check size={20} /><strong>No applications awaiting review</strong><span>New submissions will appear here.</span></div>}
         <div className="finding-list">{reviewableApplications.map((application) => (
@@ -81,6 +85,17 @@ function ScrutinyOfficerDashboard() {
             <div className="institution-application-head"><div><strong>{application.institution_name}</strong><span className="mono">{application.application_number} · {application.academic_year}</span></div><StatusBadge status={application.status} /></div>
             <div className="institution-application-meta"><span>{application.document_count} supporting file(s)</span><span>Updated {formatDate(application.updated_at)}</span></div>
             <Link className="table-link" href={`/applications/${application.id}`}>Review extracted fields and evidence <ArrowRight size={14} /></Link>
+          </article>
+        ))}</div>
+      </section>
+      <section className="panel">
+        <div className="panel-heading"><div><h3>Sample decision outcomes</h3><p>Synthetic examples for demonstration only; these are not actual or official AICTE decisions.</p></div><span className="record-count">{sampleDecisions.length} samples</span></div>
+        {!loading && sampleDecisions.length === 0 && <div className="section-empty"><FileText size={20} /><strong>No sample decisions are configured</strong></div>}
+        <div className="finding-list">{sampleDecisions.map((application) => (
+          <article className="institution-application" key={application.id}>
+            <div className="institution-application-head"><div><strong>{application.institution_name}</strong><span className="mono">{application.application_number} · {application.academic_year}</span></div><StatusBadge status={application.status} /></div>
+            <div className="institution-application-meta"><span>Synthetic demonstration record</span><span>No supporting evidence attached</span></div>
+            <Link className="table-link" href={`/applications/${application.id}`}>View sample decision <ArrowRight size={14} /></Link>
           </article>
         ))}</div>
       </section>
@@ -277,14 +292,14 @@ function AdminDashboard() {
       <MetricCards stats={stats} admin />
       <RuleApprovalQueue canReview />
       <section className="panel">
-        <div className="panel-heading"><div><h3>Institution decision queue</h3><p>Applications submitted by institutions and awaiting a System Administrator decision.</p></div><span className="record-count">{applications.filter((application) => application.status === "pending_admin_review").length} pending</span></div>
+        <div className="panel-heading"><div><h3>Institution submissions</h3><p>Applications submitted for final review by an AICTE Scrutiny Officer.</p></div><span className="record-count">{applications.filter((application) => application.status === "pending_admin_review").length} pending</span></div>
         {loading && <div className="table-state"><span className="spinner" /> Loading applications…</div>}
-        {!loading && applications.filter((application) => application.status === "pending_admin_review").length === 0 && <div className="section-empty"><Check size={20} /><strong>No institution submissions awaiting a decision</strong></div>}
+        {!loading && applications.filter((application) => application.status === "pending_admin_review").length === 0 && <div className="section-empty"><Check size={20} /><strong>No institution submissions awaiting scrutiny</strong></div>}
         <div className="finding-list">{applications.filter((application) => application.status === "pending_admin_review").map((application) => (
           <article className="institution-application" key={application.id}>
             <div className="institution-application-head"><div><strong>{application.institution_name}</strong><span className="mono">{application.application_number} · {application.academic_year}</span></div><StatusBadge status={application.status} /></div>
             <div className="institution-application-meta"><span>{application.document_count} supporting file(s)</span><span>Submitted {formatDate(application.updated_at)}</span></div>
-            <Link className="table-link" href={`/applications/${application.id}`}>Review and decide <ArrowRight size={14} /></Link>
+            <Link className="table-link" href={`/applications/${application.id}`}>View submission <ArrowRight size={14} /></Link>
           </article>
         ))}</div>
       </section>
@@ -1001,12 +1016,12 @@ function InstitutionDashboard() {
           {loading && <div className="table-state"><span className="spinner" /> Loading applications…</div>}
           {!loading && applications.map((application) => <article className="institution-application" key={application.id}>
             <div className="institution-application-head"><div><strong>{application.institution_name}</strong><span className="mono">{application.application_number} · {application.academic_year}</span></div><StatusBadge status={application.status} /></div>
-            <div className="institution-application-meta"><span>{application.document_count} supporting file(s)</span><span>Submitted {formatDate(application.created_at)}</span></div>
+            <div className="institution-application-meta"><span>{application.document_count} supporting file(s)</span><span>{application.application_number.startsWith("DEMO-SAMPLE-") ? "Synthetic demonstration record" : `Submitted ${formatDate(application.created_at)}`}</span></div>
             <div className="institution-application-actions">
               <Link className="table-link" href={`/applications/${application.id}`}>View status <ArrowRight size={14} /></Link>
               {["approved", "rejected"].includes(application.status) && <Link className="table-link" href={`/applications/${application.id}/report`}>Decision report <ArrowRight size={14} /></Link>}
-              {application.status === "rejected" && <button className="button button-secondary compact" disabled={resubmittingId === application.id} onClick={() => void resubmit(application)}>{resubmittingId === application.id ? "Creating…" : "Start resubmission"}</button>}
-              {["draft", "processing", "review_required", "corrections_requested"].includes(application.status) && application.document_count > 0 && <button className="button button-primary compact" disabled={submittingId === application.id} onClick={() => void submitForReview(application)}>{submittingId === application.id ? "Submitting…" : application.status === "corrections_requested" ? "Resubmit corrected application" : "Submit to System Administrator"}</button>}
+              {application.status === "rejected" && !application.application_number.startsWith("DEMO-SAMPLE-") && <button className="button button-secondary compact" disabled={resubmittingId === application.id} onClick={() => void resubmit(application)}>{resubmittingId === application.id ? "Creating…" : "Start resubmission"}</button>}
+              {["draft", "processing", "review_required", "corrections_requested"].includes(application.status) && application.document_count > 0 && <button className="button button-primary compact" disabled={submittingId === application.id} onClick={() => void submitForReview(application)}>{submittingId === application.id ? "Submitting…" : application.status === "corrections_requested" ? "Resubmit corrected application" : "Submit to AICTE Scrutiny Officer"}</button>}
               {!["approved", "rejected", "pending_admin_review"].includes(application.status) && <>
                 <button className="button button-secondary compact" onClick={() => setEditingApplication(application)}>Correct details</button>
                 <select aria-label={`Document type for ${application.application_number}`} value={uploadTypes[application.id] ?? "affiliation_letter"} onChange={(event) => setUploadTypes((current) => ({ ...current, [application.id]: event.target.value }))}>

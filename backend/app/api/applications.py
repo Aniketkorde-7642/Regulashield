@@ -218,6 +218,11 @@ def create_resubmission(
         raise HTTPException(status_code=404, detail="Application not found.")
     if original.status != "rejected":
         raise HTTPException(status_code=409, detail="Only rejected applications can be resubmitted.")
+    if original.application_number.startswith("DEMO-SAMPLE-"):
+        raise HTTPException(
+            status_code=409,
+            detail="Demonstration sample applications cannot be resubmitted.",
+        )
 
     base_number = original.application_number[:61]
     revision = 1
@@ -344,7 +349,7 @@ def get_decision_report(
     if user.role == "institution" and application.owner_username != user.username:
         raise HTTPException(status_code=404, detail="Application not found.")
     if application.status not in {"approved", "rejected"} or not application.decided_by or not application.decided_at:
-        raise HTTPException(status_code=409, detail="A decision report is available after the System Administrator records a decision.")
+        raise HTTPException(status_code=409, detail="A decision report is available after an authorized reviewer records a decision.")
 
     extractions = [
         extraction

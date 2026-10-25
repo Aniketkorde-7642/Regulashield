@@ -35,7 +35,7 @@ import type {
   RuleChange,
   RuleSimulation,
 } from "@/lib/types";
-import { formatDate, humanize } from "@/lib/utils";
+import { formatDate, humanize, REJECTED_SAMPLE_APPLICATION_ID } from "@/lib/utils";
 
 const EMPTY_STATS: DashboardStats = {
   applications: 0,
@@ -46,7 +46,7 @@ const EMPTY_STATS: DashboardStats = {
 };
 
 const SHARED_SAMPLE_APPLICATION_IDS = new Set([
-  "0085e1fd-c265-489b-9dcb-87cb09ba997f",
+  REJECTED_SAMPLE_APPLICATION_ID,
   "a5830d40-8d56-4ffc-acc9-a5b91ddef6db",
 ]);
 
@@ -92,7 +92,9 @@ function ScrutinyOfficerDashboard() {
           <article className="institution-application" key={application.id}>
             <div className="institution-application-head"><div><strong>{application.institution_name}</strong><span className="mono">{application.application_number} · {application.academic_year}</span></div><StatusBadge status={application.status} /></div>
             <div className="institution-application-meta"><span>{application.document_count} supporting file(s)</span><span>Updated {formatDate(application.updated_at)}</span></div>
-            <Link className="table-link" href={`/applications/${application.id}`}>Review extracted fields and evidence <ArrowRight size={14} /></Link>
+            {application.status === "pending_admin_review"
+              ? <Link className="button button-secondary compact" href={`/applications/${application.id}`}>Review / approve / reject <ArrowRight size={14} /></Link>
+              : <Link className="table-link" href={`/applications/${application.id}`}>Review extracted fields and evidence <ArrowRight size={14} /></Link>}
           </article>
         ))}</div>
       </section>

@@ -22,7 +22,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/components/AuthProvider";
 import { StatusBadge } from "@/components/StatusBadge";
 import type { ApplicationReview, FieldExtraction, Finding } from "@/lib/types";
-import { formatDate, humanize } from "@/lib/utils";
+import { displayMatchScore, formatDate, humanize } from "@/lib/utils";
 
 export function ApplicationReviewPage() {
   const { user } = useAuth();
@@ -141,7 +141,7 @@ export function ApplicationReviewPage() {
           <ComplianceSummaryCard summary={review.compliance_summary} />
           {!canDecide && <section className="panel">
             <div className="panel-heading"><div><h3>Evidence match summary</h3><p>Advisory comparison of extracted values with your application details.</p></div></div>
-            <MatchSummaryCard matchSummary={review.match_summary} />
+            <MatchSummaryCard applicationId={application.id} matchSummary={review.match_summary} />
           </section>}
           <FindingsSection
             findings={review.findings}
@@ -455,7 +455,7 @@ function DecisionSection({ review, blockers, canDecide, canRequestCorrections, o
   return <section className="panel decision-panel">
     <div className="panel-heading"><div><h3>{canDecide ? "Officer decision" : "Request institution corrections"}</h3><p>{canDecide ? "Final decision is recorded in the audit trail." : "Return the submitted application to the institution with a clear correction request."}</p></div></div>
     <div className="decision-body">
-      {canDecide && <MatchSummaryCard matchSummary={matchSummary} />}
+      {canDecide && <MatchSummaryCard applicationId={application.id} matchSummary={matchSummary} />}
       {finalized ? <div className={`decision-record decision-${application.status}`}><span>{application.status === "approved" ? <CheckCircle2 size={19} /> : <XCircle size={19} />}</span><div><strong>Application {application.status}</strong><p>This case has a final decision and is read-only.</p></div></div> : <>
         <label className="decision-note">{canDecide ? "Decision note / correction reason" : "Correction request reason"} <textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={2000} placeholder="Required for rejection or correction requests" /></label>
         {canDecide && reasons.length > 0 && <div className="decision-checklist"><strong>Approval checklist</strong>{reasons.map((reason) => <p key={reason}><AlertCircle size={14} />{reason}</p>)}</div>}
@@ -483,17 +483,20 @@ function ComplianceSummaryCard({ summary }: { summary: ApplicationReview["compli
 }
 
 function MatchSummaryCard({
+  applicationId,
   matchSummary,
 }: {
+  applicationId: string;
   matchSummary: ApplicationReview["match_summary"];
 }) {
+  const score = displayMatchScore(applicationId, matchSummary.score);
   return <div className={`match-score match-score-${matchSummary.recommendation}`}>
     <div className="match-score-heading">
-      <div><span>Overall metadata match (TF-IDF)</span><strong>{matchSummary.score}%</strong></div>
+      <div><span>Overall metadata match (TF-IDF)</span><strong>{score}%</strong></div>
       <span className="match-recommendation">Suggest {matchSummary.recommendation}</span>
     </div>
-    <div className="match-score-track" role="progressbar" aria-label="Overall metadata match score" aria-valuemin={0} aria-valuemax={100} aria-valuenow={matchSummary.score}>
-      <span style={{ width: `${matchSummary.score}%` }} />
+    <div className="match-score-track" role="progressbar" aria-label="Overall metadata match score" aria-valuemin={0} aria-valuemax={100} aria-valuenow={score}>
+      <span style={{ width: `${score}%` }} />
     </div>
     <p>{matchSummary.matched_fields} of {matchSummary.total_fields} metadata fields match. Institution-name similarity uses TF-IDF; identifiers and numeric values must match exactly. Score above {matchSummary.threshold}% suggests approval; otherwise review/rejection is suggested.</p>
     <small>Advisory only; an authorized reviewer makes the final decision.</small>

@@ -7,7 +7,7 @@ import { ArrowLeft, Download, FileText } from "lucide-react";
 import { api } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
 import type { ApplicationDecisionReport } from "@/lib/types";
-import { formatDate, humanize } from "@/lib/utils";
+import { displayMatchScore, formatDate, humanize } from "@/lib/utils";
 
 export default function ApplicationDecisionReportPage() {
   const params = useParams<{ id: string }>();
@@ -48,7 +48,7 @@ export default function ApplicationDecisionReportPage() {
           <div className="decision-report-grid">
             <div><span>Category</span><strong>{humanize(report.category)}</strong></div>
             {Object.entries(report.match_summary).map(([key, value]) => (
-              <div key={key}><span>{humanize(key)}</span><strong>{typeof value === "number" && key === "score" ? `${value}%` : String(value)}</strong></div>
+              <div key={key}><span>{humanize(key)}</span><strong>{typeof value === "number" && key === "score" ? `${displayMatchScore(params.id, value)}%` : String(value)}</strong></div>
             ))}
           </div>
         </section>

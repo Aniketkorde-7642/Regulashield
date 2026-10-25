@@ -16,6 +16,7 @@ import {
   Users,
   Upload,
   FlaskConical,
+  XCircle,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { NewApplicationForm } from "@/components/NewApplicationForm";
@@ -63,6 +64,8 @@ export function RoleDashboard({ role }: { role: string }) {
 
 function ScrutinyOfficerDashboard() {
   const { stats, applications, loading, busy, error, refresh } = useDashboardData();
+  const [decisionBusyId, setDecisionBusyId] = useState<string | null>(null);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
   const reviewableApplications = applications.filter(
     (application) => !["approved", "rejected"].includes(application.status),
   );
@@ -74,6 +77,43 @@ function ScrutinyOfficerDashboard() {
       && ["approved", "rejected"].includes(application.status),
   );
 
+  async function decideApplication(application: ApplicationSummary, decision: "approve" | "reject") {
+    if (application.status !== "pending_admin_review") return;
+
+    let note = "";
+    if (decision === "reject") {
+      const rejectionReason = window.prompt("Enter the reason for rejecting this application.");
+      if (rejectionReason === null) return;
+      note = rejectionReason.trim();
+      if (!note) {
+        setDecisionError("A rejection reason is required.");
+        return;
+      }
+    }
+
+    setDecisionBusyId(application.id);
+    setDecisionError(null);
+    try {
+      if (decision === "approve") {
+        const { blockers } = await api.blockers(application.id);
+        if (blockers.length > 0) {
+          window.alert(`This application cannot be approved yet:\n\n${blockers.join("\n")}\n\nOpen the application to review evidence and blockers.`);
+          return;
+        }
+        if (!window.confirm(`Approve ${application.application_number}?`)) return;
+      } else if (!window.confirm(`Reject ${application.application_number}?\n\nReason: ${note}`)) {
+        return;
+      }
+
+      await api.decide(application.id, decision, note);
+      refresh();
+    } catch (reason) {
+      setDecisionError(reason instanceof Error ? reason.message : "The application decision could not be saved.");
+    } finally {
+      setDecisionBusyId(null);
+    }
+  }
+
   return (
     <>
       <DashboardHeader
@@ -83,6 +123,7 @@ function ScrutinyOfficerDashboard() {
         actions={<button className="button button-secondary" onClick={refresh} disabled={busy}><RefreshCw size={15} className={busy ? "spin" : ""} /> Refresh</button>}
       />
       <DashboardError error={error} />
+      <DashboardError error={decisionError} />
       <MetricCards stats={stats} />
       <section className="panel">
         <div className="panel-heading"><div><h3>Applications awaiting review</h3><p>Submitted institution applications are ready for an AICTE Scrutiny Officer's final decision.</p></div><span className="record-count">{reviewableApplications.length} open</span></div>
@@ -92,9 +133,19 @@ function ScrutinyOfficerDashboard() {
           <article className="institution-application" key={application.id}>
             <div className="institution-application-head"><div><strong>{application.institution_name}</strong><span className="mono">{application.application_number} · {application.academic_year}</span></div><StatusBadge status={application.status} /></div>
             <div className="institution-application-meta"><span>{application.document_count} supporting file(s)</span><span>Updated {formatDate(application.updated_at)}</span></div>
-            {application.status === "pending_admin_review"
-              ? <Link className="button button-secondary compact" href={`/applications/${application.id}`}>Review / approve / reject <ArrowRight size={14} /></Link>
-              : <Link className="table-link" href={`/applications/${application.id}`}>Review extracted fields and evidence <ArrowRight size={14} /></Link>}
+            <div className="institution-application-actions">
+              <Link className={application.status === "pending_admin_review" ? "button button-secondary compact" : "table-link"} href={`/applications/${application.id}`}>
+                {application.status === "pending_admin_review" ? "Review application" : "Review extracted fields and evidence"} <ArrowRight size={14} />
+              </Link>
+              {application.status === "pending_admin_review" && <>
+                <button className="button button-primary compact" disabled={decisionBusyId !== null || busy} onClick={() => void decideApplication(application, "approve")}>
+                  <CheckCircle2 size={14} /> {decisionBusyId === application.id ? "Saving…" : "Approve"}
+                </button>
+                <button className="button button-reject compact" disabled={decisionBusyId !== null || busy} onClick={() => void decideApplication(application, "reject")}>
+                  <XCircle size={14} /> Reject
+                </button>
+              </>}
+            </div>
           </article>
         ))}</div>
       </section>

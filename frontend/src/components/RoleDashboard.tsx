@@ -8,11 +8,13 @@ import {
   Check,
   CheckCircle2,
   ClipboardList,
+  Clock3,
   FileText,
   FileCheck2,
   Plus,
   RefreshCw,
   ShieldAlert,
+  TrendingUp,
   Users,
   Upload,
   FlaskConical,
@@ -131,7 +133,32 @@ function ScrutinyOfficerDashboard() {
       <DashboardError error={error} />
       <DashboardError error={decisionError} />
       <MetricCards stats={stats} />
-      <section className="panel">
+      <section className="dashboard-insights" aria-label="Scrutiny workload summary">
+        <article className="dashboard-insight-card">
+          <span className="insight-icon insight-indigo"><ClipboardList size={17} /></span>
+          <div><span>Open applications</span><strong>{reviewableApplications.length}</strong><small>Not yet decided</small></div>
+        </article>
+        <article className="dashboard-insight-card">
+          <span className="insight-icon insight-amber"><Clock3 size={17} /></span>
+          <div><span>Ready for scrutiny</span><strong>{reviewableApplications.filter((application) => ["pending_admin_review", "review_required"].includes(application.status)).length}</strong><small>Can be reviewed now</small></div>
+        </article>
+        <article className="dashboard-insight-card">
+          <span className="insight-icon insight-teal"><FileCheck2 size={17} /></span>
+          <div><span>Evidence files</span><strong>{reviewableApplications.reduce((total, application) => total + application.document_count, 0)}</strong><small>Across open applications</small></div>
+        </article>
+        <article className="dashboard-insight-card">
+          <span className="insight-icon insight-rose"><CheckCircle2 size={17} /></span>
+          <div><span>Decided</span><strong>{applications.filter((application) => ["approved", "rejected"].includes(application.status)).length}</strong><small>Approved or rejected</small></div>
+        </article>
+      </section>
+      <ApplicationStatusAnalytics
+        applications={applications}
+        title="Review queue overview"
+        description="See how submitted applications are moving through scrutiny."
+        id="scrutiny-analytics"
+        loading={loading}
+      />
+      <section className="panel" id="scrutiny-queue">
         <div className="panel-heading"><div><h3>Applications awaiting review</h3><p>Submitted institution applications are ready for an AICTE Scrutiny Officer's final decision.</p></div><span className="record-count">{reviewableApplications.length} open</span></div>
         {loading && <div className="table-state"><span className="spinner" /> Loading applications…</div>}
         {!loading && reviewableApplications.length === 0 && <div className="section-empty"><Check size={20} /><strong>No applications awaiting review</strong><span>New submissions will appear here.</span></div>}
@@ -154,7 +181,7 @@ function ScrutinyOfficerDashboard() {
           </article>
         ))}</div>
       </section>
-      <section className="panel">
+      <section className="panel" id="scrutiny-samples">
         <div className="panel-heading"><div><h3>Sample decision outcomes</h3><p>Synthetic examples for demonstration only; these are not actual or official AICTE decisions.</p></div><span className="record-count">{sampleDecisions.length} samples</span></div>
         {!loading && sampleDecisions.length === 0 && <div className="section-empty"><FileText size={20} /><strong>No sample decisions are configured</strong></div>}
         <div className="finding-list">{sampleDecisions.map((application) => (
@@ -181,7 +208,7 @@ function DashboardHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <section className="welcome-row">
+    <section className="welcome-row" id="dashboard-overview">
       <div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p>{description}</p></div>
       {actions && <div className="welcome-actions">{actions}</div>}
     </section>
@@ -195,6 +222,240 @@ function MetricCards({ stats, admin = false }: { stats: DashboardStats; admin?: 
       <Metric label="In review" value={stats.in_review} icon={<ShieldAlert size={19} />} />
       <Metric label="Documents" value={stats.documents} icon={<FileCheck2 size={19} />} />
       <Metric label={admin ? "Managed users" : "Open findings"} value={admin ? stats.users : stats.open_findings} icon={admin ? <Users size={19} /> : <AlertCircle size={19} />} />
+    </section>
+  );
+}
+
+function ApplicationStatusAnalytics({
+  applications,
+  title,
+  description,
+  id,
+  loading,
+}: {
+  applications: ApplicationSummary[];
+  title: string;
+  description: string;
+  id: string;
+  loading: boolean;
+}) {
+  const statuses = [
+    { key: "draft", label: "Draft", shortLabel: "Draft", color: "#8995a8" },
+    { key: "processing", label: "Processing", shortLabel: "Processing", color: "#d59a3b" },
+    { key: "review_required", label: "Review required", shortLabel: "Review", color: "#586bd2" },
+    { key: "pending_admin_review", label: "Pending scrutiny", shortLabel: "Scrutiny", color: "#8866b5" },
+    { key: "corrections_requested", label: "Corrections requested", shortLabel: "Corrections", color: "#c27b28" },
+    { key: "approved", label: "Approved", shortLabel: "Approved", color: "#299879" },
+    { key: "rejected", label: "Rejected", shortLabel: "Rejected", color: "#d35d6e" },
+  ];
+  const statusCounts = statuses
+    .map((status) => ({
+      ...status,
+      count: applications.filter((application) => application.status === status.key).length,
+    }))
+    .filter((status) => status.count > 0);
+  const knownStatuses = new Set(statuses.map((status) => status.key));
+  const otherCount = applications.filter((application) => !knownStatuses.has(application.status)).length;
+  if (otherCount > 0) {
+    statusCounts.push({
+      key: "other",
+      label: "Other",
+      shortLabel: "Other",
+      color: "#59677d",
+      count: otherCount,
+    });
+  }
+  const maxStatusCount = Math.max(1, ...statusCounts.map((status) => status.count));
+  let chartOffset = 0;
+  const pieChartBackground = `conic-gradient(${statusCounts.map((status) => {
+    const start = chartOffset;
+    chartOffset += applications.length ? (status.count / applications.length) * 100 : 0;
+    return `${status.color} ${start}% ${chartOffset}%`;
+  }).join(", ")})`;
+  const recentApplications = [...applications]
+    .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at))
+    .slice(0, 3);
+  const finalApplications = applications.filter((application) =>
+    ["approved", "rejected"].includes(application.status),
+  );
+  const approvedShare = finalApplications.length
+    ? Math.round((finalApplications.filter((application) => application.status === "approved").length / finalApplications.length) * 100)
+    : null;
+
+  return (
+    <section className="panel analytics-panel" id={id} aria-labelledby={`${id}-title`}>
+      <div className="panel-heading">
+        <div><h3 id={`${id}-title`}>{title}</h3><p>{description}</p></div>
+        <span className="record-count">{applications.length} total</span>
+      </div>
+      {loading
+        ? <div className="table-state"><span className="spinner" /> Loading analytics…</div>
+        : applications.length === 0
+          ? <div className="section-empty"><ClipboardList size={20} /><strong>No application data to analyze yet</strong></div>
+          : <div className="analytics-content">
+            <div className="analytics-breakdown">
+              <div className="analytics-subheading"><strong>Workflow distribution</strong><span>Share of all applications</span></div>
+              <div className="analytics-charts">
+                <section className="analytics-chart-card" aria-label="Application status bar chart">
+                  <div className="analytics-chart-title"><strong>Applications by status</strong><span>{applications.length} total</span></div>
+                  <div className="status-bar-chart" role="img" aria-label={`Bar chart showing ${statusCounts.map((status) => `${status.label}: ${status.count}`).join(", ")}`}>
+                    {statusCounts.map((status) => {
+                      const percentage = (status.count / applications.length) * 100;
+                      const barHeight = (status.count / maxStatusCount) * 100;
+                      return (
+                        <div className="status-bar-column" key={status.key} title={`${status.label}: ${status.count} (${Math.round(percentage)}%)`}>
+                          <strong>{status.count}</strong>
+                          <div className="status-bar-track"><span style={{ height: `${Math.max(7, barHeight)}%`, background: status.color }} /></div>
+                          <span className="status-bar-label">{status.shortLabel}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+                <section className="analytics-chart-card analytics-pie-card" aria-label="Application status pie chart">
+                  <div className="analytics-chart-title"><strong>Status share</strong><span>Application mix</span></div>
+                  <div className="status-pie-layout">
+                    <div className="status-pie" role="img" aria-label={`Pie chart showing ${statusCounts.map((status) => `${status.label}: ${status.count}`).join(", ")}`} style={{ background: pieChartBackground }}>
+                      <span><strong>{applications.length}</strong><small>applications</small></span>
+                    </div>
+                    <ul className="status-pie-legend">
+                      {statusCounts.map((status) => (
+                        <li key={status.key}>
+                          <span className="status-pie-swatch" style={{ background: status.color }} />
+                          <span>{status.label}</span>
+                          <strong>{Math.round((status.count / applications.length) * 100)}%</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </section>
+              </div>
+              <div className="analytics-status-list">
+                {statuses.map(({ key, label }) => {
+                  const count = applications.filter((application) => application.status === key).length;
+                  if (!count) return null;
+                  const percentage = Math.round((count / applications.length) * 100);
+                  return (
+                    <div className="analytics-status-row" key={key}>
+                      <div className="analytics-status-label"><span>{label}</span><strong>{count}</strong></div>
+                      <div
+                        className={`analytics-track analytics-track-${key}`}
+                        role="progressbar"
+                        aria-label={`${label} applications`}
+                        aria-valuemin={0}
+                        aria-valuemax={applications.length}
+                        aria-valuenow={count}
+                      >
+                        <span style={{ width: `${percentage}%` }} />
+                      </div>
+                      <span className="analytics-percentage">{percentage}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="analytics-footnote">
+                <span><strong>{applications.reduce((total, application) => total + application.document_count, 0)}</strong> supporting files across this dashboard</span>
+                <span><strong>{approvedShare === null ? "—" : `${approvedShare}%`}</strong> approval share of decided applications</span>
+              </div>
+            </div>
+            <aside className="analytics-recent" aria-label="Recently updated applications">
+              <div className="analytics-subheading"><strong><Clock3 size={15} /> Recent updates</strong><span>Latest activity</span></div>
+              <div className="analytics-recent-list">
+                {recentApplications.map((application) => (
+                  <Link className="analytics-recent-item" href={`/applications/${application.id}`} key={application.id}>
+                    <span className="analytics-recent-icon"><FileText size={15} /></span>
+                    <span className="analytics-recent-copy">
+                      <strong>{application.institution_name}</strong>
+                      <small>{application.application_number} · Updated {formatDate(application.updated_at)}</small>
+                    </span>
+                    <StatusBadge status={application.status} />
+                  </Link>
+                ))}
+              </div>
+            </aside>
+          </div>}
+    </section>
+  );
+}
+
+function InstitutionNextStep({
+  applications,
+  loading,
+  onCreate,
+}: {
+  applications: ApplicationSummary[];
+  loading: boolean;
+  onCreate: () => void;
+}) {
+  if (loading) return null;
+  if (applications.length === 0) {
+    return (
+      <section className="next-step-card">
+        <span className="next-step-icon"><Plus size={19} /></span>
+        <div className="next-step-copy"><strong>Start your first application</strong><span>Add institution details and prepare your supporting evidence to begin.</span></div>
+        <button className="button button-primary compact" onClick={onCreate}>Create application <ArrowRight size={14} /></button>
+      </section>
+    );
+  }
+
+  const priority: Record<string, number> = {
+    corrections_requested: 0,
+    review_required: 1,
+    draft: 2,
+    processing: 3,
+    pending_admin_review: 4,
+    approved: 5,
+    rejected: 5,
+  };
+  const application = [...applications].sort((left, right) =>
+    (priority[left.status] ?? 6) - (priority[right.status] ?? 6)
+    || Date.parse(right.updated_at) - Date.parse(left.updated_at),
+  )[0];
+  const isActionRequired = ["corrections_requested", "review_required", "draft"].includes(application.status);
+  const isDecision = ["approved", "rejected"].includes(application.status);
+  const title = application.status === "corrections_requested"
+    ? "Corrections requested"
+    : application.status === "review_required"
+      ? "Review and complete your application"
+      : application.status === "draft"
+        ? "Finish preparing your application"
+        : application.status === "processing"
+          ? "Your documents are being processed"
+          : application.status === "pending_admin_review"
+            ? "Your application is under scrutiny"
+            : application.status === "approved"
+              ? "Your application has been approved"
+              : application.status === "rejected"
+                ? "Review your decision and next steps"
+                : "Track your latest application";
+  const description = application.status === "corrections_requested"
+    ? "Review the requested changes, update your details or evidence, then resubmit."
+    : application.status === "review_required"
+      ? "Open your application to check the review status and address any outstanding items."
+      : application.status === "draft"
+        ? "Add the required details and supporting documents before sending it for review."
+        : application.status === "processing"
+          ? "We are checking your uploaded evidence. You can open the application to follow progress."
+          : application.status === "pending_admin_review"
+            ? "Your submission is in the scrutiny queue. You can view its status and uploaded evidence."
+            : isDecision
+              ? "Open the decision report to review the recorded outcome."
+              : "Open your application to see its current status and available actions.";
+  const href = isDecision
+    ? `/applications/${application.id}/report`
+    : `/applications/${application.id}`;
+
+  return (
+    <section className={`next-step-card ${isActionRequired ? "next-step-attention" : ""}`}>
+      <span className="next-step-icon">{isActionRequired ? <ShieldAlert size={19} /> : <TrendingUp size={19} />}</span>
+      <div className="next-step-copy">
+        <span className="next-step-eyebrow">{isActionRequired ? "NEXT ACTION" : "APPLICATION UPDATE"}</span>
+        <strong>{title}</strong>
+        <span>{description}</span>
+      </div>
+      <Link className={isActionRequired ? "button button-primary compact" : "button button-secondary compact"} href={href}>
+        {isDecision ? "View decision report" : "Open application"} <ArrowRight size={14} />
+      </Link>
     </section>
   );
 }
@@ -356,8 +617,33 @@ function AdminDashboard() {
       />
       <DashboardError error={error} />
       <MetricCards stats={stats} admin />
+      <section className="dashboard-insights" aria-label="System operations summary">
+        <article className="dashboard-insight-card">
+          <span className="insight-icon insight-amber"><ClipboardList size={17} /></span>
+          <div><span>Awaiting scrutiny</span><strong>{loading ? "—" : applications.filter((application) => application.status === "pending_admin_review").length}</strong><small>Institution submissions</small></div>
+        </article>
+        <article className="dashboard-insight-card">
+          <span className="insight-icon insight-indigo"><Users size={17} /></span>
+          <div><span>Account requests</span><strong>{usersError ? "—" : institutionRequests.length}</strong><small>{usersError ? "Request list unavailable" : "Pending review"}</small></div>
+        </article>
+        <article className="dashboard-insight-card">
+          <span className="insight-icon insight-teal"><ShieldAlert size={17} /></span>
+          <div><span>Audit integrity</span><strong>{security ? security.audit_integrity_ok ? "Verified" : "Needs review" : "Checking"}</strong><small>{security ? `${security.audit_events} events recorded` : "Security status"}</small></div>
+        </article>
+        <article className="dashboard-insight-card">
+          <span className="insight-icon insight-rose"><Users size={17} /></span>
+          <div><span>Disabled accounts</span><strong>{security ? security.disabled_users : "—"}</strong><small>{security ? `${security.active_users} active accounts` : "Account status"}</small></div>
+        </article>
+      </section>
+      <ApplicationStatusAnalytics
+        applications={applications}
+        title="Application analytics"
+        description="Distribution of institution applications by their current workflow status."
+        id="admin-analytics"
+        loading={loading}
+      />
       <RuleApprovalQueue canReview />
-      <section className="panel">
+      <section className="panel" id="admin-submissions">
         <div className="panel-heading"><div><h3>Institution submissions</h3><p>Applications submitted for final review by an AICTE Scrutiny Officer.</p></div><span className="record-count">{applications.filter((application) => application.status === "pending_admin_review").length} pending</span></div>
         {loading && <div className="table-state"><span className="spinner" /> Loading applications…</div>}
         {!loading && applications.filter((application) => application.status === "pending_admin_review").length === 0 && <div className="section-empty"><Check size={20} /><strong>No institution submissions awaiting scrutiny</strong></div>}
@@ -369,7 +655,7 @@ function AdminDashboard() {
           </article>
         ))}</div>
       </section>
-      <section className="panel">
+      <section className="panel" id="admin-requests">
         <div className="panel-heading"><div><h3>Institution account requests</h3><p>New institution accounts cannot sign in until approved here.</p></div><span className="record-count">{institutionRequests.length} pending</span></div>
         <DashboardError error={usersError} />
         {institutionRequests.length === 0
@@ -387,7 +673,7 @@ function AdminDashboard() {
             </tr>)}</tbody>
           </table></div>}
       </section>
-      {security && <section className="panel security-overview">
+      {security && <section className="panel security-overview" id="admin-security">
         <div className="panel-heading"><div><h3>Security and audit monitoring</h3><p>Account status and integrity of the hash-linked audit history.</p></div><Link className="table-link" href="/audit">Open audit trail <ArrowRight size={14} /></Link></div>
         <div className="security-status-grid">
           <div><span>Audit integrity</span><strong className={security.audit_integrity_ok ? "security-good" : "security-bad"}>{security.audit_integrity_ok ? "Verified" : "Integrity check failed"}</strong></div>
@@ -396,7 +682,7 @@ function AdminDashboard() {
           <div><span>Recorded audit events</span><strong>{security.audit_events}</strong></div>
         </div>
       </section>}
-      <section className="panel">
+      <section className="panel" id="admin-users">
         <div className="panel-heading">
           <div><h3>User accounts</h3><p>Create an individual account for each person, assign the least-privilege role, and reset passwords when needed.</p></div>
           <button className="button button-primary" onClick={() => setShowCreate(true)}><Plus size={16} /> Create user</button>
@@ -674,18 +960,18 @@ function ComplianceAdminDashboard() {
       <DashboardError error={error} />
       <MetricCards stats={stats} />
       <div className="compliance-governance-grid">
-        <section className="panel">
+        <section className="panel" id="compliance-registry">
           <div className="panel-heading"><div><h3>Rule Registry</h3><p>Active rules apply to future evaluations only.</p></div></div>
           <p className="governance-link-row"><Link href="/audit">Audit Trail: inspect rule lifecycle events <ArrowRight size={14} /></Link></p>
           <label className="history-toggle"><input type="checkbox" checked={includeHistory} onChange={(event) => setIncludeHistory(event.target.checked)} /> Include superseded versions</label>
         </section>
-        <section className="panel">
+        <section className="panel" id="compliance-approvals">
           <div className="panel-heading"><div><h3>Approval Queue</h3><p>Submitted proposals are read-only until the independent approver reviews them.</p></div></div>
           <p>{changes.filter((change) => change.status === "pending").length} proposal(s) awaiting approval.</p>
           <span className="queue-disclaimer">System Administrators approve or reject proposals; authors cannot approve their own changes.</span>
         </section>
       </div>
-      <section className="panel">
+      <section className="panel" id="compliance-draft">
         <div className="panel-heading"><div><h3>{selectedDraft ? "Edit rule draft" : "Create rule draft"}</h3><p>Changes stay inactive until separately approved. Editing resets source verification and simulation.</p></div>
           {selectedDraft && <button type="button" className="button button-secondary compact" onClick={() => { setSelectedDraftId(null); setSimulation(null); }}>New draft</button>}
         </div>
@@ -730,7 +1016,7 @@ function ComplianceAdminDashboard() {
           <button className="button button-primary" disabled={saving || !selectedDraft.source_verified || !selectedDraft.simulated_at} onClick={() => void submitDraft()}>{saving ? "Submitting…" : "Submit for System Administrator approval"}</button>
         </div>
       </section>}
-      <section className="panel">
+      <section className="panel" id="compliance-proposals">
         <div className="panel-heading"><div><h3>Rule draft and approval queue</h3><p>Compliance Administrators may edit their drafts. Submitted proposals await independent review.</p></div></div>
         {changes.length === 0 ? <div className="section-empty"><ClipboardList size={20} /><strong>No rule proposals yet</strong><span>Create a draft to begin the governed rule lifecycle.</span></div> : <div className="table-scroll"><table className="data-table">
           <thead><tr><th>Rule</th><th>Status</th><th>Source</th><th>Simulation</th><th>Owner / reviewer</th><th /></tr></thead>
@@ -802,7 +1088,7 @@ function RuleApprovalQueue({ canReview }: { canReview: boolean }) {
     }
   }
 
-  return <section className="panel">
+  return <section className="panel" id={canReview ? "admin-rule-approvals" : "compliance-approval-queue"}>
     <div className="panel-heading"><div><h3>Approval Queue</h3><p>{canReview ? "Review submitted changes as an independent System Administrator." : "Pending proposals require a separate System Administrator; authors cannot self-approve."}</p></div></div>
     <DashboardError error={error} />
     {changes.length === 0 ? <div className="section-empty"><CheckCircle2 size={20} /><strong>No pending rule changes</strong><span>Submitted proposals will appear here.</span></div> : <div className="table-scroll"><table className="data-table">
@@ -865,7 +1151,19 @@ function RegulatoryDashboard() {
       <DashboardHeader eyebrow="REGULATORY VERIFICATION" title="Compliance and issuer dashboard" description="Inspect open validation findings and record verification outcomes." actions={<button className="button button-secondary" onClick={refresh} disabled={busy}><RefreshCw size={15} className={busy ? "spin" : ""} /> Refresh</button>} />
       <DashboardError error={error} />
       <MetricCards stats={stats} />
-      <section className="panel">
+      <section className="dashboard-insights" aria-label="Open finding severity summary" aria-busy={loading}>
+        {(["high", "medium", "low"] as const).map((severity) => (
+          <article className={`dashboard-insight-card finding-insight-${severity}`} key={severity}>
+            <span className={`insight-icon insight-${severity === "high" ? "rose" : severity === "medium" ? "amber" : "teal"}`}><ShieldAlert size={17} /></span>
+            <div><span>{humanize(severity)} severity</span><strong>{loading ? "—" : findings.filter((finding) => finding.severity === severity).length}</strong><small>Open verification findings</small></div>
+          </article>
+        ))}
+        <article className="dashboard-insight-card">
+          <span className="insight-icon insight-indigo"><Check size={17} /></span>
+          <div><span>Applications checked</span><strong>{loading ? "—" : new Set(findings.map((finding) => finding.application_number)).size}</strong><small>With open findings</small></div>
+        </article>
+      </section>
+      <section className="panel" id="regulatory-findings">
         <div className="panel-heading"><div><h3>Open verification findings</h3><p>Review the evidence and mark findings resolved when verified.</p></div><span className="record-count">{findings.length} open</span></div>
         <DashboardError error={findingError} />
         {loading && <div className="table-state"><span className="spinner" /> Loading applications…</div>}
@@ -880,7 +1178,7 @@ function RegulatoryDashboard() {
           </article>)}
         </div>
       </section>
-      <section className="panel"><div className="panel-heading"><div><h3>Rule configuration</h3><p>Current checks are demonstration rules; production rules need an authorized, versioned policy source.</p></div></div><div className="notice"><ShieldAlert size={17} /><span>Regulatory findings are advisory examples. Rule editing is not enabled in this demonstration workspace.</span></div></section>
+      <section className="panel" id="regulatory-rules"><div className="panel-heading"><div><h3>Rule configuration</h3><p>Current checks are demonstration rules; production rules need an authorized, versioned policy source.</p></div></div><div className="notice"><ShieldAlert size={17} /><span>Regulatory findings are advisory examples. Rule editing is not enabled in this demonstration workspace.</span></div></section>
     </>
   );
 }
@@ -1015,7 +1313,15 @@ function InstitutionDashboard() {
       <DashboardError error={uploadError} />
       <DashboardError error={reportsError} />
       <MetricCards stats={stats} />
-      <section className="panel">
+      <InstitutionNextStep applications={applications} loading={loading} onCreate={() => setShowCreate(true)} />
+      <ApplicationStatusAnalytics
+        applications={applications}
+        title="Application status overview"
+        description="Track each application from draft through review and final decision."
+        id="institution-analytics"
+        loading={loading}
+      />
+      <section className="panel" id="institution-reports">
         <div className="panel-heading">
           <div><h3>Decision reports</h3><p>Official outcome records for applications decided by the System Administrator. Open a report to review or print it.</p></div>
           <span className="record-count">{applications.filter((application) => ["approved", "rejected"].includes(application.status)).length} reports</span>
@@ -1039,7 +1345,7 @@ function InstitutionDashboard() {
           )}
         </div>
       </section>
-      <section className="panel">
+      <section className="panel" id="institution-validation">
         <div className="panel-heading"><div><h3>Validation results and correction actions</h3><p>Open compliance gaps, missing evidence, and extracted-field mismatches include suggested next steps.</p></div><span className="record-count">{reports.length + discrepancies.length + missingDocuments.length} open item(s)</span></div>
         {loading && <div className="table-state"><span className="spinner" /> Loading validation reports…</div>}
         {!loading && reports.length === 0 && discrepancies.length === 0 && missingDocuments.length === 0 && !reportsError && <div className="section-empty"><Check size={20} /><strong>No open validation gaps</strong><span>Upload supporting documents to run evidence checks.</span></div>}
@@ -1076,7 +1382,7 @@ function InstitutionDashboard() {
           ))}
         </div>
       </section>
-      <section className="panel">
+      <section className="panel" id="institution-applications">
         <div className="panel-heading"><div><h3>Application status</h3><p>Only applications submitted by this institution account are shown.</p></div><span className="record-count">{applications.length} applications</span></div>
         <div className="institution-applications">
           {loading && <div className="table-state"><span className="spinner" /> Loading applications…</div>}

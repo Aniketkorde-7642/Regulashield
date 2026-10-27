@@ -38,11 +38,21 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers,
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers,
+      cache: "no-store",
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error(
+        "Could not connect to Regula Shield. Check your internet connection and try again. If this continues, contact your System Administrator.",
+      );
+    }
+    throw error;
+  }
   const contentType = response.headers.get("content-type") ?? "";
   const result: unknown = contentType.includes("application/json")
     ? await response.json()

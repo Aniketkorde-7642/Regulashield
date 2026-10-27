@@ -33,7 +33,7 @@ export function ApplicationReviewPage() {
   const isOfficer = ["officer", "aicte_scrutiny_officer", "scrutiny_officer"].includes(role);
   const canDecideRole = isAdmin || isOfficer;
   const canReview = ["admin", "administrator", "system_administrator", "officer", "aicte_scrutiny_officer", "scrutiny_officer", "regulatory_officer", "regulatory", "verification_officer", "compliance_admin", "compliance_administrator", "regulatory_compliance_administrator"].includes(role);
-  const canUpload = canDecideRole || role === "institution" || role === "institution_login";
+  const canUpload = isAdmin || role === "institution" || role === "institution_login";
   const [review, setReview] = useState<ApplicationReview | null>(null);
   const [blockers, setBlockers] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -127,7 +127,7 @@ export function ApplicationReviewPage() {
           <DocumentSection
             review={review}
             canUpload={canEditEvidence}
-            canReprocess={canDecide}
+            canReprocess={canDecide && !isOfficer}
             onUploaded={() => void load(true)}
           />
           <FieldsSection
